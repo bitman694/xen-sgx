@@ -193,7 +193,7 @@ XEN_CPUFEATURE(XSAVES,        4*32+ 3) /*S  XSAVES/XRSTORS instructions */
 /* Intel-defined CPU features, CPUID level 0x00000007:0.ebx, word 5 */
 XEN_CPUFEATURE(FSGSBASE,      5*32+ 0) /*A  {RD,WR}{FS,GS}BASE instructions */
 XEN_CPUFEATURE(TSC_ADJUST,    5*32+ 1) /*S  TSC_ADJUST MSR available */
-XEN_CPUFEATURE(SGX,           5*32+ 2) /*   Software Guard extensions */
+XEN_CPUFEATURE(SGX,           5*32+ 2) /*H  Intel Software Guard extensions */
 XEN_CPUFEATURE(BMI1,          5*32+ 3) /*A  1st bit manipulation extensions */
 XEN_CPUFEATURE(HLE,           5*32+ 4) /*A  Hardware Lock Elision */
 XEN_CPUFEATURE(AVX2,          5*32+ 5) /*A  AVX2 instructions */
@@ -229,6 +229,7 @@ XEN_CPUFEATURE(PKU,           6*32+ 3) /*H  Protection Keys for Userspace */
 XEN_CPUFEATURE(OSPKE,         6*32+ 4) /*!  OS Protection Keys Enable */
 XEN_CPUFEATURE(AVX512_VPOPCNTDQ, 6*32+14) /*A  POPCNT for vectors of DW/QW */
 XEN_CPUFEATURE(RDPID,         6*32+22) /*A  RDPID instruction */
+XEN_CPUFEATURE(SGX_LAUNCH_CONTROL, 6*32+30) /*H Intel SGX Launch Control */
 
 /* AMD-defined CPU features, CPUID level 0x80000007.edx, word 7 */
 XEN_CPUFEATURE(ITSC,          7*32+ 8) /*   Invariant TSC */
