@@ -13,6 +13,7 @@
 #include <xen/init.h>
 #include <asm/processor.h>
 #include <public/hvm/params.h>   /* HVM_PARAM_SGX */
+#include <public/arch-x86/xen-sgx.h> /* new hypercall */
 
 /*
  * Detect sgx info for particular cpu as sgx info returned by cpuid is
@@ -51,5 +52,7 @@ void hvm_disable_sgx(struct domain *d);
 void hvm_sgx_cpuid(struct domain *d, unsigned int subinput,
         unsigned int *eax, unsigned int *ebx,
         unsigned int *ecx, unsigned int *edx);
+
+long do_sgx_op(XEN_GUEST_HANDLE_PARAM(xen_sgx_op_t) u_sgx_op);
 
 #endif  /* __ASM_X86_HVM_SGX_H__ */

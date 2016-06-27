@@ -799,6 +799,7 @@ ENTRY(hypercall_table)
         .endr
         .quad do_mca                /* 48 */
         .quad paging_domctl_continuation
+        .quad do_sgx_op
         .rept NR_hypercalls-((.-hypercall_table)/8)
         .quad do_ni_hypercall
         .endr
@@ -850,6 +851,7 @@ ENTRY(hypercall_args_table)
         .endr
         .byte 1 /* do_mca               */  /* 48 */
         .byte 1 /* paging_domctl_continuation */
+        .byte 1 /* do_sgx_op */
         .rept NR_hypercalls-(.-hypercall_args_table)
         .byte 0 /* do_ni_hypercall      */
         .endr

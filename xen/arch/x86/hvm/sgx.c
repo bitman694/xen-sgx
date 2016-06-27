@@ -9,6 +9,7 @@
 #include <xen/mm.h>
 #include <xen/sched.h>
 #include <asm/p2m.h>
+#include <xen/guest_access.h>
 #include <asm/hvm/sgx.h>
 
 #define CPUID_SGX   0x12
@@ -540,4 +541,77 @@ void hvm_sgx_cpuid(struct domain *d, unsigned int subinput,
     default:
         *eax = *ebx = *ecx = *edx = 0;
     }
+}
+
+long do_sgx_op(XEN_GUEST_HANDLE_PARAM(xen_sgx_op_t) u_sgx_op)
+{
+    long ret = 0;
+    xen_sgx_op_t sgx_op;
+
+    if ( !sgx_enabled )
+        return -ENODEV;
+
+    if ( copy_from_guest(&sgx_op, u_sgx_op, 1) )
+        return -EFAULT;
+
+    /* TODO: XSM ??? */
+
+    switch ( sgx_op.cmd )
+    {
+    case XEN_SGX_get_physinfo:
+        {
+            xen_sgx_physinfo_t *pinfo = &(sgx_op.u.physinfo);
+
+            pinfo->phys_epc_npages = total_epc_npages;
+            pinfo->free_epc_npages = free_epc_npages;
+        }
+        break;
+    case XEN_SGX_get_dominfo:
+        {
+            xen_sgx_dominfo_t *dinfo = &(sgx_op.u.dominfo);
+            struct domain *d = rcu_lock_domain_by_id(dinfo->domid);
+            struct sgx_domain *sgx;
+
+            if ( !d )
+                return -ESRCH;
+
+            if ( !hvm_sgx_enabled(d) )
+            {
+                rcu_unlock_domain(d);
+                return -EINVAL;
+            }
+
+            sgx = to_sgx(d);
+            dinfo->epc_base_pfn = sgx->epc_base_pfn;
+            dinfo->epc_npages = sgx->epc_npages;
+
+            rcu_unlock_domain(d);
+        }
+        break;
+    case XEN_SGX_set_dominfo:
+        {
+            xen_sgx_dominfo_t *dinfo = &(sgx_op.u.dominfo);
+            struct domain *d = rcu_lock_domain_by_id(dinfo->domid);
+
+            if ( !d )
+                return -ESRCH;
+
+            ret = hvm_enable_sgx(d, dinfo->epc_base_pfn, dinfo->epc_npages);
+            if ( ret )
+            {
+                rcu_unlock_domain(d);
+                return ret;
+            }
+
+            rcu_unlock_domain(d);
+        }
+        break;
+    default:
+        return -EINVAL;
+    }
+
+    if ( copy_to_guest(u_sgx_op, &sgx_op, 1) )
+        return -EFAULT;
+
+    return 0;
 }
