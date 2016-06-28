@@ -53,6 +53,7 @@
 #include <xen/foreign/x86_32.h>
 #include <xen/foreign/x86_64.h>
 #include <xen/arch-x86/xen-mca.h>
+#include <xen/arch-x86/xen-sgx.h>
 #endif
 
 #define XC_PAGE_SHIFT           12
@@ -1184,6 +1185,19 @@ typedef xen_sysctl_cputopo_t xc_cputopo_t;
 typedef xen_sysctl_numainfo_t xc_numainfo_t;
 typedef xen_sysctl_meminfo_t xc_meminfo_t;
 typedef xen_sysctl_pcitopoinfo_t xc_pcitopoinfo_t;
+#if defined(__i386__) || defined(__x86_64__)
+/* For Intel's SGX */
+int xc_sgx_op(xc_interface *xch, struct xen_sgx_op *sgx);
+
+typedef xen_sgx_physinfo_t xc_sgx_physinfo_t;
+typedef xen_sgx_dominfo_t xc_sgx_dominfo_t;
+
+int xc_platform_sgx_supported(xc_interface *xc);
+int xc_sgx_get_physinfo(xc_interface *xch, xc_sgx_physinfo_t *physinfo);
+int xc_sgx_get_dominfo(xc_interface *xch, xc_sgx_dominfo_t *dominfo);
+int xc_sgx_set_dominfo(xc_interface *xch, xc_sgx_dominfo_t *dominfo);
+
+#endif
 
 typedef uint32_t xc_cpu_to_node_t;
 typedef uint32_t xc_cpu_to_socket_t;

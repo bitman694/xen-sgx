@@ -1772,6 +1772,93 @@ int xc_dom_feature_translated(struct xc_dom_image *dom)
 }
 
 /* ------------------------------------------------------------------------ */
+int xc_sgx_op(xc_interface *xch, struct xen_sgx_op *sgx_op)
+{
+    DECLARE_HYPERCALL_BOUNCE(sgx_op, sizeof(*sgx_op),
+            XC_HYPERCALL_BUFFER_BOUNCE_BOTH);
+    int ret = -EINVAL;
+
+    if ( xc_hypercall_bounce_pre(xch, sgx_op) )
+    {
+        PERROR("Could not bounce memory for do_sgx_op hypercall");
+        return -1;
+    }
+
+    ret = xencall1(xch->xcall, __HYPERVISOR_sgx_op,
+            HYPERCALL_BUFFER_AS_ARG(sgx_op));
+
+    xc_hypercall_bounce_post(xch, sgx_op);
+
+    return ret;
+}
+
+int xc_sgx_get_physinfo(xc_interface *xch, xc_sgx_physinfo_t *physinfo)
+{
+    xen_sgx_op_t sgx_op;
+    int ret;
+
+    sgx_op.cmd = XEN_SGX_get_physinfo;
+
+    memcpy(&(sgx_op.u.physinfo), physinfo, sizeof(*physinfo));
+
+    ret = xc_sgx_op(xch, &sgx_op);
+    if ( ret )
+    {
+        PERROR("xc_sgx_op failed\n");
+        return ret;
+    }
+
+    memcpy(physinfo, &(sgx_op.u.physinfo), sizeof(*physinfo));
+
+    return 0;
+}
+
+int xc_sgx_get_dominfo(xc_interface *xch, xc_sgx_dominfo_t *dominfo)
+{
+    xen_sgx_op_t sgx_op;
+    int ret;
+
+    sgx_op.cmd = XEN_SGX_get_dominfo;
+
+    memcpy(&(sgx_op.u.dominfo), dominfo, sizeof(*dominfo));
+
+    ret = xc_sgx_op(xch, &sgx_op);
+    if ( ret )
+    {
+        PERROR("xc_sgx_op failed\n");
+        return ret;
+    }
+
+    memcpy(dominfo, &(sgx_op.u.dominfo), sizeof (*dominfo));
+
+    return 0;
+}
+
+int xc_sgx_set_dominfo(xc_interface *xch, xc_sgx_dominfo_t *dominfo)
+{
+    xen_sgx_op_t sgx_op;
+    int ret;
+
+    sgx_op.cmd = XEN_SGX_set_dominfo;
+
+    memcpy(&(sgx_op.u.dominfo), dominfo, sizeof(*dominfo));
+    ret = xc_sgx_op(xch, &sgx_op);
+    if ( ret )
+    {
+        PERROR("xc_sgx_op failed\n");
+        return ret;
+    }
+    return 0;
+}
+
+int xc_platform_sgx_supported(xc_interface *xch)
+{
+    xc_sgx_physinfo_t dummy;
+
+    return xc_sgx_get_physinfo(xch, &dummy) ? 0 : 1;
+}
+
+/* ------------------------------------------------------------------------ */
 
 static struct xc_dom_arch xc_dom_32_pae = {
     .guest_type = "xen-3.0-x86_32p",
