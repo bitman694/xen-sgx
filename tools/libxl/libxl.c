@@ -6800,6 +6800,57 @@ DEFINE_DEVICE_TYPE_STRUCT(disk,
     .skip_attach = 1
 );
 
+int libxl_platform_sgx_supported(libxl_ctx *ctx)
+{
+    return xc_platform_sgx_supported(ctx->xch);
+}
+
+int libxl_sgx_get_physinfo(libxl_ctx *ctx, libxl_sgx_physinfo *info)
+{
+    xc_sgx_physinfo_t sgx_physinfo;
+
+    if ( !libxl_platform_sgx_supported(ctx) ) {
+        fprintf(stderr, "platform not support SGX.\n");
+        return -1;
+    }
+
+    if ( xc_sgx_get_physinfo(ctx->xch, &sgx_physinfo) ) {
+        fprintf(stderr, "xc_sgx_physinfo failed.\n");
+        return -1;
+    }
+
+    info->phys_epc_npages = sgx_physinfo.phys_epc_npages;
+    info->free_epc_npages = sgx_physinfo.free_epc_npages;
+
+    return 0;
+}
+
+int libxl_sgx_get_dominfo(libxl_ctx *ctx, uint32_t id, libxl_sgx_dominfo *info)
+{
+    xc_sgx_dominfo_t sgx_dominfo;
+
+    if ( !libxl_platform_sgx_supported(ctx) ) {
+        fprintf(stderr, "platform not support SGX.\n");
+        return -1;
+    }
+
+    memset(&sgx_dominfo, 0, sizeof (sgx_dominfo));
+    sgx_dominfo.domid = id;
+
+    if ( xc_sgx_get_dominfo(ctx->xch, &sgx_dominfo) ) {
+        fprintf(stderr, "xc_sgx_dominfo failed.\n");
+        return -1;
+    }
+    if ( !sgx_dominfo.epc_base_pfn || !sgx_dominfo.epc_npages ) {
+        fprintf(stderr, "domain %d doesn't support SGX.\n", id);
+        return -1;
+    }
+    info->epc_base_pfn = sgx_dominfo.epc_base_pfn;
+    info->epc_npages = sgx_dominfo.epc_npages;
+
+    return 0;
+}
+
 /*
  * Local variables:
  * mode: C

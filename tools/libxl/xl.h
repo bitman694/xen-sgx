@@ -134,6 +134,9 @@ int main_psr_cat_cbm_set(int argc, char **argv);
 int main_psr_cat_show(int argc, char **argv);
 #endif
 
+int main_sgxinfo(int argc, char **argv);
+int main_sgxlist(int argc, char **argv);
+
 void help(const char *command);
 
 extern struct cmd_spec cmd_table[];

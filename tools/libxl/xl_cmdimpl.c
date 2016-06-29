@@ -9497,6 +9497,81 @@ int main_psr_hwinfo(int argc, char **argv)
 
 #endif
 
+static void print_sgx_physinfo(libxl_sgx_physinfo *physinfo)
+{
+    printf("Platform SGX information:\n");
+    printf("\tTotal EPC:  %5ldM (%8ld pages)\n",
+            (physinfo->phys_epc_npages) >> 8,
+            physinfo->phys_epc_npages);
+    printf("\tFree EPC:  %5ldM (%8ld pages)\n",
+            (physinfo->free_epc_npages) >> 8,
+            physinfo->free_epc_npages);
+}
+
+int main_sgxinfo(int argc, char **argv)
+{
+    libxl_sgx_physinfo sgxinfo;
+
+    if (libxl_sgx_get_physinfo(ctx, &sgxinfo) != 0) {
+        fprintf(stderr, "libxl_sgx_get_physinfo failed.\n");
+        return -1;
+    }
+
+    print_sgx_physinfo(&sgxinfo);
+
+    return 0;
+}
+
+static void print_sgx_dominfo(libxl_dominfo *dominfo,
+        libxl_sgx_dominfo *sgx_dominfo)
+{
+    char *domname = libxl_domid_to_name(ctx, dominfo->domid);
+
+    printf("%-16s %32d %5ldM(%5ld pages)\n",
+            domname, dominfo->domid,
+            sgx_dominfo->epc_npages >> 8,
+            sgx_dominfo->epc_npages);
+}
+
+static void print_all_sgx_dominfo(void)
+{
+    libxl_dominfo *dominfo;
+    int nb_domain, i;
+
+    printf("Name\t\t\t\t\t\tID\tEPC(static-max)\n");
+    if (!(dominfo = libxl_list_domain(ctx, &nb_domain))) {
+        fprintf(stderr, "libxl_list_domain failed.\n");
+        return;
+    }
+
+    for ( i = 0; i < nb_domain; i++ ) {
+        libxl_sgx_dominfo sgx_dominfo;
+
+        if (dominfo[i].domain_type != LIBXL_DOMAIN_TYPE_HVM) {
+            continue;
+        }
+        if ( libxl_sgx_get_dominfo(ctx, dominfo[i].domid, &sgx_dominfo) ) {
+            fprintf(stderr, "libxl_sgx_get_dominfo failed: domid %d\n",
+                    dominfo[i].domid);
+            continue;
+        }
+
+        print_sgx_dominfo(&dominfo[i], &sgx_dominfo);
+    }
+}
+
+int main_sgxlist(int argc, char **argv)
+{
+    if ( !libxl_platform_sgx_supported(ctx) ) {
+        fprintf(stderr, "platform doesn't support SGX.\n");
+        return -1;
+    }
+
+    print_all_sgx_dominfo();
+
+    return 0;
+}
+
 /*
  * Local variables:
  * mode: C

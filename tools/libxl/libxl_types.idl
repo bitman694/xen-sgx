@@ -565,6 +565,16 @@ libxl_domain_build_info = Struct("domain_build_info",[
     ], dir=DIR_IN
 )
 
+libxl_sgx_physinfo = Struct("sgx_physinfo", [
+    ("phys_epc_npages", uint64),
+    ("free_epc_npages", uint64),
+    ], dir=DIR_OUT)
+
+libxl_sgx_dominfo = Struct("sgx_dominfo", [
+    ("epc_base_pfn", uint64),
+    ("epc_npages", uint64),
+    ], dir=DIR_OUT)
+
 libxl_device_vfb = Struct("device_vfb", [
     ("backend_domid", libxl_domid),
     ("backend_domname",string),

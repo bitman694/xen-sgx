@@ -2082,6 +2082,11 @@ void libxl_psr_cat_info_list_free(libxl_psr_cat_info *list, int nr);
 int libxl_fd_set_cloexec(libxl_ctx *ctx, int fd, int cloexec);
 int libxl_fd_set_nonblock(libxl_ctx *ctx, int fd, int nonblock);
 
+/* For SGX */
+int libxl_platform_sgx_supported(libxl_ctx *ctx);
+int libxl_sgx_get_physinfo(libxl_ctx *ctx, libxl_sgx_physinfo *info);
+int libxl_sgx_get_dominfo(libxl_ctx *ctx, uint32_t id, libxl_sgx_dominfo *info);
+
 #include <libxl_event.h>
 
 #endif /* LIBXL_H */

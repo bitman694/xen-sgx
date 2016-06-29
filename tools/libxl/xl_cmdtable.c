@@ -584,6 +584,16 @@ struct cmd_spec cmd_table[] = {
       "List information about all USB controllers and devices for a domain",
       "<Domain>",
     },
+    { "sgxinfo",
+      &main_sgxinfo, 0, 0,
+      "List machine's physical SGX infomation.",
+      ""
+    },
+    { "sgxlist",
+      &main_sgxlist, 0, 0,
+      "List SGX info for all/some HVM guests.",
+      "<Domain>"
+    }
 };
 
 int cmdtable_len = sizeof(cmd_table)/sizeof(struct cmd_spec);
