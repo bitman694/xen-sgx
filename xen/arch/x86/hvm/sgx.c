@@ -4,6 +4,9 @@
  * Author: Kai Huang <kai.huang@linux.intel.com>
  */
 
+#include <xen/list.h>
+#include <xen/errno.h>
+#include <xen/mm.h>
 #include <asm/hvm/sgx.h>
 
 #define CPUID_SGX   0x12
@@ -203,4 +206,154 @@ void __init detect_sgx(struct cpuinfo_x86 *c)
 
 out:
     update_sgx_boot_cpudata(sgxc);
+}
+
+/*
+ * EPC page infomation structure. Each EPC has one struct epc_page to keep EPC
+ * page info, just like struct page_info for normal memory.
+ *
+ * So far in reality machine's EPC size won't execeed hundreds MB, so for
+ * simplicity currently we just put all free EPC pages in global free list.
+ */
+struct epc_page {
+    struct list_head list;  /* all free EPC pages are in global free list. */
+};
+
+/*
+ * epc_frametable keeps an array of struct epc_page for every EPC pages, so that
+ * epc_page_to_mfn, epc_mfn_to_page works straightforwardly. The array will be
+ * allocated dynamically according to machine's EPC size.
+ */
+static struct epc_page *epc_frametable = NULL;
+
+/* Global free EPC pages list. */
+static struct list_head free_epc_list;
+static spinlock_t epc_lock;
+
+/* Total number of EPC pages that machine has */
+static unsigned long total_epc_npages = 0;
+/* Current number of free EPC pages in free_epc_list */
+static unsigned long free_epc_npages = 0;
+
+bool_t sgx_enabled = 0;
+
+static int npages_to_order(unsigned long npages)
+{
+    int order = 0;
+
+    while ( (1 << order) < npages )
+        order++;
+
+    return order;
+}
+
+static int init_epc_frametable(unsigned long npages)
+{
+    unsigned long i, order;
+
+    order = npages * sizeof(struct epc_page);
+    order >>= 12;
+    order = npages_to_order(order);
+    printk("%s: npages 0x%lx, epc_frametable order 0x%lx\n", __func__,
+            npages, order);
+
+    epc_frametable = alloc_xenheap_pages(order, 0);
+    if ( !epc_frametable )
+        return -ENOMEM;
+
+    for ( i = 0; i < npages; i++ )
+    {
+        struct epc_page *epg = epc_frametable + i;
+
+        list_add_tail(&epg->list, &free_epc_list);
+    }
+
+    return 0;
+}
+
+static void fini_epc_frametable(unsigned long npages)
+{
+    unsigned long order;
+
+    order = npages * sizeof(struct epc_page);
+    order >>= 12;
+    order = npages_to_order(order);
+    printk("%s: npages 0x%lx, epc_frametable order 0x%lx\n", __func__,
+            npages, order);
+
+    free_xenheap_pages(epc_frametable, order);
+}
+
+void sgx_init(void)
+{
+    unsigned long npages;
+
+    /* Doesn't support SGX if hardware doesn't support it */
+    if ( !(sgx_boot_cpudata->cap & SGX_CAP_SGX1) )
+        return;
+
+    INIT_LIST_HEAD(&free_epc_list);
+    spin_lock_init(&epc_lock);
+
+    npages = sgx_boot_cpudata->epc_size >> PAGE_SHIFT;
+    if ( init_epc_frametable(npages) )
+        return;
+
+    free_epc_npages = total_epc_npages = npages;
+
+    sgx_enabled = 1;
+}
+
+void sgx_fini(void)
+{
+    if ( !epc_frametable )
+        return;
+
+    fini_epc_frametable(total_epc_npages);
+    sgx_enabled = 0;
+}
+
+unsigned long epc_page_to_mfn(struct epc_page *epg)
+{
+    unsigned long epc_base_mfn =
+        (unsigned long)(sgx_boot_cpudata->epc_base) >> PAGE_SHIFT;
+
+    BUG_ON(!epc_frametable);
+    BUG_ON(!epc_base_mfn);
+
+    return epc_base_mfn + (epg - epc_frametable);
+}
+
+struct epc_page *epc_mfn_to_page(unsigned long mfn)
+{
+    unsigned long epc_base_mfn =
+        (unsigned long)(sgx_boot_cpudata->epc_base) >> PAGE_SHIFT;
+
+    BUG_ON(!epc_frametable);
+    BUG_ON(!epc_base_mfn);
+
+    return epc_frametable + (mfn - epc_base_mfn);
+}
+
+struct epc_page *alloc_epc_page(void)
+{
+    struct epc_page *epg;
+
+    spin_lock(&epc_lock);
+    epg = list_first_entry_or_null(&free_epc_list, struct epc_page, list);
+    if ( epg ) {
+        list_del(&epg->list);
+        free_epc_npages--;
+    }
+    spin_unlock(&epc_lock);
+
+    return epg;
+}
+
+void free_epc_page(struct epc_page *epg)
+{
+    spin_lock(&epc_lock);
+    list_add_tail(&epg->list, &free_epc_list);
+    free_epc_npages++;
+    spin_unlock(&epc_lock);
 }
