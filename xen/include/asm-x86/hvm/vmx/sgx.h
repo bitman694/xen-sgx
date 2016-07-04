@@ -12,6 +12,7 @@
 #include <xen/types.h>
 #include <xen/init.h>
 #include <asm/processor.h>
+#include <xen/list.h>
 
 #define SGX_CPUID 0x12
 
@@ -41,5 +42,23 @@ struct sgx_cpuinfo {
 
 /* Detect SGX info for particular CPU via SGX CPUID */
 void detect_sgx(int cpu);
+
+/*
+ * EPC page infomation structure. Each EPC has one struct epc_page to keep EPC
+ * page info, just like struct page_info for normal memory.
+ *
+ * So far in reality machine's EPC size won't execeed 100MB, so currently just
+ * put all free EPC pages in global free list.
+ */
+struct epc_page {
+    struct list_head list;  /* all free EPC pages are in global free list. */
+};
+
+struct epc_page *alloc_epc_page(void);
+void free_epc_page(struct epc_page *epg);
+unsigned long epc_page_to_mfn(struct epc_page *epg);
+struct epc_page *epc_mfn_to_page(unsigned long mfn);
+void *map_epc_page_to_xen(struct epc_page *epg);
+void unmap_epc_page(void *addr);
 
 #endif  /* __ASM_X86_HVM_VMX_SGX_H__ */

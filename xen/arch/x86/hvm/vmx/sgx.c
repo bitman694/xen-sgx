@@ -7,11 +7,88 @@
 #include <asm/cpufeature.h>
 #include <asm/msr-index.h>
 #include <asm/msr.h>
+#include <xen/errno.h>
+#include <xen/mm.h>
 #include <asm/hvm/vmx/sgx.h>
 #include <asm/hvm/vmx/vmcs.h>
 
 static struct sgx_cpuinfo __read_mostly sgx_cpudata[NR_CPUS];
 static struct sgx_cpuinfo __read_mostly boot_sgx_cpudata;
+
+/*
+ * epc_frametable keeps an array of struct epc_page for every EPC pages, so that
+ * epc_page_to_mfn, epc_mfn_to_page works straightforwardly. The array will be
+ * allocated dynamically according to machine's EPC size.
+ */
+static struct epc_page *epc_frametable = NULL;
+/*
+ * EPC is mapped to Xen's virtual address at once, so that each EPC page's
+ * virtual address is epc_base_vaddr + offset.
+ */
+static void *epc_base_vaddr = NULL;
+
+/* Global free EPC pages list. */
+static struct list_head free_epc_list;
+static spinlock_t epc_lock;
+
+#define total_epc_npages (boot_sgx_cpudata.epc_size >> PAGE_SHIFT)
+#define epc_base_mfn (boot_sgx_cpudata.epc_base >> PAGE_SHIFT)
+
+/* Current number of free EPC pages in free_epc_list */
+static unsigned long free_epc_npages = 0;
+
+unsigned long epc_page_to_mfn(struct epc_page *epg)
+{
+    BUG_ON(!epc_frametable);
+    BUG_ON(!epc_base_mfn);
+
+    return epc_base_mfn + (epg - epc_frametable);
+}
+
+struct epc_page *epc_mfn_to_page(unsigned long mfn)
+{
+    BUG_ON(!epc_frametable);
+    BUG_ON(!epc_base_mfn);
+
+    return epc_frametable + (mfn - epc_base_mfn);
+}
+
+struct epc_page *alloc_epc_page(void)
+{
+    struct epc_page *epg;
+
+    spin_lock(&epc_lock);
+    epg = list_first_entry_or_null(&free_epc_list, struct epc_page, list);
+    if ( epg ) {
+        list_del(&epg->list);
+        free_epc_npages--;
+    }
+    spin_unlock(&epc_lock);
+
+    return epg;
+}
+
+void free_epc_page(struct epc_page *epg)
+{
+    spin_lock(&epc_lock);
+    list_add_tail(&epg->list, &free_epc_list);
+    free_epc_npages++;
+    spin_unlock(&epc_lock);
+}
+
+void *map_epc_page_to_xen(struct epc_page *epg)
+{
+    BUG_ON(!epc_base_vaddr);
+    BUG_ON(!epc_frametable);
+
+    return (void *)(((unsigned long)(epc_base_vaddr)) +
+            ((epg - epc_frametable) << PAGE_SHIFT));
+}
+
+void unmap_epc_page(void *addr)
+{
+    /* Nothing */
+}
 
 static bool_t sgx_enabled_in_bios(void)
 {
@@ -177,6 +254,80 @@ static bool_t __init check_sgx_consistency(void)
     return true;
 }
 
+static int inline npages_to_order(unsigned long npages)
+{
+    int order = 0;
+
+    while ( (1 << order) < npages )
+        order++;
+
+    return order;
+}
+
+static int __init init_epc_frametable(unsigned long npages)
+{
+    unsigned long i, order;
+
+    order = npages * sizeof(struct epc_page);
+    order >>= 12;
+    order = npages_to_order(order);
+
+    epc_frametable = alloc_xenheap_pages(order, 0);
+    if ( !epc_frametable )
+        return -ENOMEM;
+
+    for ( i = 0; i < npages; i++ )
+    {
+        struct epc_page *epg = epc_frametable + i;
+
+        list_add_tail(&epg->list, &free_epc_list);
+    }
+
+    return 0;
+}
+
+static void destroy_epc_frametable(unsigned long npages)
+{
+    unsigned long order;
+
+    if ( !epc_frametable )
+        return;
+
+    order = npages * sizeof(struct epc_page);
+    order >>= 12;
+    order = npages_to_order(order);
+
+    free_xenheap_pages(epc_frametable, order);
+}
+
+static int __init sgx_init_epc(void)
+{
+    int r;
+
+    INIT_LIST_HEAD(&free_epc_list);
+    spin_lock_init(&epc_lock);
+
+    r = init_epc_frametable(total_epc_npages);
+    if ( r )
+    {
+        printk("Failed to allocate EPC frametable. Disable SGX.\n");
+        return r;
+    }
+
+    epc_base_vaddr = ioremap_cache(epc_base_mfn << PAGE_SHIFT,
+            total_epc_npages << PAGE_SHIFT);
+    if ( !epc_base_vaddr )
+    {
+        printk("Failed to ioremap_cache EPC. Disable SGX.\n");
+        destroy_epc_frametable(total_epc_npages);
+        return -EFAULT;
+    }
+
+    free_epc_npages = total_epc_npages;
+
+    return 0;
+}
+
 static int __init sgx_init(void)
 {
     /* Assume CPU 0 is always online */
@@ -186,6 +337,9 @@ static int __init sgx_init(void)
         goto not_supported;
 
     if ( !check_sgx_consistency() )
+        goto not_supported;
+
+    if ( sgx_init_epc() )
         goto not_supported;
 
     print_sgx_cpuinfo(&boot_sgx_cpudata);
