@@ -13,6 +13,7 @@
 #include <xen/init.h>
 #include <asm/processor.h>
 #include <xen/list.h>
+#include <public/hvm/params.h>   /* HVM_PARAM_SGX */
 
 #define SGX_CPUID 0x12
 
@@ -60,5 +61,18 @@ unsigned long epc_page_to_mfn(struct epc_page *epg);
 struct epc_page *epc_mfn_to_page(unsigned long mfn);
 void *map_epc_page_to_xen(struct epc_page *epg);
 void unmap_epc_page(void *addr);
+
+struct sgx_domain {
+    unsigned long epc_base_pfn;
+    unsigned long epc_npages;
+};
+
+#define to_sgx(d)   (&((d)->arch.hvm_domain.vmx.sgx))
+#define hvm_epc_populated(d)  (!!((d)->arch.hvm_domain.vmx.sgx.epc_base_pfn))
+
+int hvm_populate_epc(struct domain *d, unsigned long epc_base_pfn,
+        unsigned long epc_npages);
+int hvm_reset_epc(struct domain *d, bool_t free_epc);
+void hvm_destroy_epc(struct domain *d);
 
 #endif  /* __ASM_X86_HVM_VMX_SGX_H__ */

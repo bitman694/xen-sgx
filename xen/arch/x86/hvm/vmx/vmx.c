@@ -416,6 +416,9 @@ static int vmx_domain_initialise(struct domain *d)
 
 static void vmx_domain_destroy(struct domain *d)
 {
+    if ( hvm_epc_populated(d) )
+        hvm_destroy_epc(d);
+
     if ( !has_vlapic(d) )
         return;
 
