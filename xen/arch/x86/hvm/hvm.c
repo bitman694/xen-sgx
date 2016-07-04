@@ -704,6 +704,13 @@ void hvm_domain_relinquish_resources(struct domain *d)
 
 void hvm_domain_destroy(struct domain *d)
 {
+    /*
+     * Need put this before free d->arch.hvm_domain.params, as this will clear
+     * EPC EPT mappings which will consult whether nestedhvm_enabled when
+     * flushing EPT.
+     */
+    hvm_disable_sgx(d);
+
     xfree(d->arch.hvm_domain.io_handler);
     d->arch.hvm_domain.io_handler = NULL;
 

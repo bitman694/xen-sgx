@@ -33,6 +33,7 @@
 #include <public/hvm/params.h>
 #include <public/hvm/save.h>
 #include <public/hvm/hvm_op.h>
+#include <asm/hvm/sgx.h>
 
 struct hvm_ioreq_page {
     unsigned long gmfn;
@@ -152,6 +153,8 @@ struct hvm_domain {
         struct vmx_domain vmx;
         struct svm_domain svm;
     };
+
+    struct sgx_domain sgx;
 };
 
 #define hap_enabled(d)  ((d)->arch.hvm_domain.hap_enabled)

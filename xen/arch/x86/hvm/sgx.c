@@ -7,6 +7,8 @@
 #include <xen/list.h>
 #include <xen/errno.h>
 #include <xen/mm.h>
+#include <xen/sched.h>
+#include <asm/p2m.h>
 #include <asm/hvm/sgx.h>
 
 #define CPUID_SGX   0x12
@@ -356,4 +358,134 @@ void free_epc_page(struct epc_page *epg)
     list_add_tail(&epg->list, &free_epc_list);
     free_epc_npages++;
     spin_unlock(&epc_lock);
+}
+
+#define to_sgx(d)   (&((d)->arch.hvm_domain.sgx))
+
+static void __hvm_unpopulate_epc(struct domain *d, unsigned long epc_base_pfn,
+        unsigned long populated_npages)
+{
+    unsigned long i;
+
+    for ( i = 0; i < populated_npages; i++ )
+    {
+        struct epc_page *epg;
+        unsigned long gfn;
+        mfn_t mfn;
+        p2m_type_t t;
+
+        gfn = i + epc_base_pfn;
+        mfn = get_gfn_query(d, gfn, &t);
+        if ( unlikely(mfn_eq(mfn, INVALID_MFN)) )
+        {
+            /*
+             * __hvm_unpopulate_epc only called when creating the domain on
+             * failure or when destroying it, therefore we can just ignore this
+             * error.
+             */
+            printk("%s: Domain %u gfn 0x%lx returns invalid mfn\n", __func__,
+                    d->domain_id, gfn);
+            put_gfn(d, gfn);
+            continue;
+        }
+
+        if ( unlikely(!p2m_is_epc(t)) )
+        {
+            printk("%s: Domain %u gfn 0x%lx returns non-EPC p2m type: %d\n",
+                    __func__, d->domain_id, gfn, (int)t);
+            put_gfn(d, gfn);
+            continue;
+        }
+
+        put_gfn(d, gfn);
+
+        if ( clear_epc_p2m_entry(d, gfn, mfn) )
+        {
+            printk("clear_epc_p2m_entry failed: gfn 0x%lx, mfn 0x%lx\n",
+                    gfn, mfn_x(mfn));
+            continue;
+        }
+
+        epg = epc_mfn_to_page(mfn_x(mfn));
+        free_epc_page(epg);
+    }
+}
+
+static void hvm_unpopulate_epc(struct domain *d)
+{
+    struct sgx_domain *sgx = to_sgx(d);
+
+    __hvm_unpopulate_epc(d, sgx->epc_base_pfn, sgx->epc_npages);
+}
+
+static int hvm_populate_epc(struct domain *d, unsigned long epc_base_pfn,
+        unsigned long epc_npages)
+{
+    unsigned long i;
+    int ret;
+
+    for ( i = 0; i < epc_npages; i++ )
+    {
+        struct epc_page *epg = alloc_epc_page();
+        unsigned long mfn;
+
+        if ( !epg )
+        {
+            printk("%s: Out of EPC\n", __func__);
+            ret = -ENOMEM;
+            goto err;
+        }
+
+        mfn = epc_page_to_mfn(epg);
+        ret = set_epc_p2m_entry(d, i + epc_base_pfn, _mfn(mfn));
+        if ( ret )
+        {
+            printk("%s: set_epc_p2m_entry failed with %d: gfn 0x%lx, "
+                    "mfn 0x%lx\n", __func__, ret, i + epc_base_pfn, mfn);
+            free_epc_page(epg);
+            goto err;
+        }
+    }
+
+    return 0;
+
+err:
+    __hvm_unpopulate_epc(d, epc_base_pfn, i);
+    return ret;
+}
+
+int hvm_enable_sgx(struct domain *d, unsigned long epc_base_pfn,
+        unsigned long epc_npages)
+{
+    struct sgx_domain *sgx = to_sgx(d);
+    int ret;
+
+    if ( !hvm_sgx_allowed(d) )
+        return -ENODEV;
+
+    if ( hvm_sgx_enabled(d) )
+        return -EBUSY;
+
+    if ( !epc_base_pfn || !epc_npages )
+        return -EINVAL;
+
+    if ( (ret = hvm_populate_epc(d, epc_base_pfn, epc_npages)) )
+        return ret;
+
+    sgx->enabled = 1;
+    sgx->epc_base_pfn = epc_base_pfn;
+    sgx->epc_npages = epc_npages;
+
+    return 0;
+}
+
+void hvm_disable_sgx(struct domain *d)
+{
+    struct sgx_domain *sgx = to_sgx(d);
+
+    if ( !hvm_sgx_enabled(d) )
+        return;
+
+    hvm_unpopulate_epc(d);
+    sgx->enabled = 0;
 }
