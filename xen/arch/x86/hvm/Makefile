@@ -24,3 +24,4 @@ obj-y += vlapic.o
 obj-y += vmsi.o
 obj-y += vpic.o
 obj-y += vpt.o
+obj-y += sgx.o

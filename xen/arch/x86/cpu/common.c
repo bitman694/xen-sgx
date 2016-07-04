@@ -13,6 +13,7 @@
 #include <mach_apic.h>
 #include <asm/setup.h>
 #include <public/sysctl.h> /* for XEN_INVALID_{SOCKET,CORE}_ID */
+#include <asm/hvm/sgx.h>
 
 #include "cpu.h"
 
@@ -402,6 +403,8 @@ void identify_cpu(struct cpuinfo_x86 *c)
 		printk(" %08x", c->x86_capability[i]);
 	printk("\n");
 #endif
+
+    detect_sgx(c);
 
 	/*
 	 * On SMP, boot_cpu_data holds the common feature set between
