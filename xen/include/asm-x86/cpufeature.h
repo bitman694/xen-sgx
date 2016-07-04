@@ -85,6 +85,7 @@
 
 /* CPUID level 0x00000007:0.ebx */
 #define cpu_has_fsgsbase        boot_cpu_has(X86_FEATURE_FSGSBASE)
+#define cpu_has_sgx             boot_cpu_has(X86_FEATURE_SGX)
 #define cpu_has_bmi1            boot_cpu_has(X86_FEATURE_BMI1)
 #define cpu_has_hle             boot_cpu_has(X86_FEATURE_HLE)
 #define cpu_has_avx2            boot_cpu_has(X86_FEATURE_AVX2)

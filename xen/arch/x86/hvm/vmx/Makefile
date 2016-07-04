@@ -4,3 +4,4 @@ obj-y += realmode.o
 obj-y += vmcs.o
 obj-y += vmx.o
 obj-y += vvmx.o
+obj-y += sgx.o

@@ -40,6 +40,7 @@
 #include <asm/shadow.h>
 #include <asm/tboot.h>
 #include <asm/apic.h>
+#include <asm/hvm/vmx/sgx.h>
 
 static bool_t __read_mostly opt_vpid_enabled = 1;
 boolean_param("vpid", opt_vpid_enabled);
@@ -695,6 +696,9 @@ int vmx_cpu_up(void)
         vpid_sync_all();
 
     vmx_pi_per_cpu_init(cpu);
+
+    if ( cpu_has_vmx_encls )
+        detect_sgx(cpu);
 
     return 0;
 }
