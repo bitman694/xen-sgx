@@ -1176,6 +1176,12 @@ int set_identity_p2m_entry(struct domain *d, unsigned long gfn,
     return ret;
 }
 
+int set_epc_p2m_entry(struct domain *d, unsigned long gfn, mfn_t mfn)
+{
+    return set_typed_p2m_entry(d, gfn, mfn, PAGE_ORDER_4K, p2m_epc,
+            p2m_get_hostp2m(d)->default_access);
+}
+
 /*
  * Returns:
  *    0        for success
@@ -1256,6 +1262,41 @@ int clear_identity_p2m_entry(struct domain *d, unsigned long gfn)
                d->domain_id, gfn, mfn_x(mfn));
         ret = 0;
     }
+
+    return ret;
+}
+
+int clear_epc_p2m_entry(struct domain *d, unsigned long gfn, mfn_t mfn)
+{
+    struct p2m_domain *p2m = p2m_get_hostp2m(d);
+    mfn_t omfn;
+    p2m_type_t ot;
+    p2m_access_t oa;
+    int ret = 0;
+
+    gfn_lock(p2m, gfn, 0);
+
+    omfn = p2m->get_entry(p2m, gfn, &ot, &oa, 0, NULL, NULL);
+    if ( mfn_eq(omfn, INVALID_MFN) || !p2m_is_epc(ot) )
+    {
+        printk(XENLOG_G_WARNING
+                "d%d: invalid EPC map to clear: gfn 0x%lx, type %d.\n",
+                d->domain_id, gfn, ot);
+        goto out;
+    }
+    if ( !mfn_eq(mfn, omfn) )
+    {
+        printk(XENLOG_G_WARNING
+                "d%d: mistaken EPC mfn to clear: gfn 0x%lx, "
+                "omfn 0x%lx, mfn 0x%lx.\n",
+                d->domain_id, gfn, mfn_x(omfn), mfn_x(mfn));
+    }
+
+    ret = p2m_set_entry(p2m, gfn, INVALID_MFN, PAGE_ORDER_4K, p2m_invalid,
+            p2m->default_access);
+
+out:
+    gfn_unlock(p2m, gfn, 0);
 
     return ret;
 }

@@ -72,6 +72,7 @@ typedef enum {
     p2m_ram_broken = 13,          /* Broken page, access cause domain crash */
     p2m_map_foreign  = 14,        /* ram pages from foreign domain */
     p2m_ioreq_server = 15,
+    p2m_epc = 16,                 /* EPC */
 } p2m_type_t;
 
 /* Modifiers to the query */
@@ -142,10 +143,13 @@ typedef unsigned int p2m_query_t;
                             | p2m_to_mask(p2m_ram_logdirty) )
 #define P2M_SHARED_TYPES   (p2m_to_mask(p2m_ram_shared))
 
+#define P2M_EPC_TYPES   (p2m_to_mask(p2m_epc))
+
 /* Valid types not necessarily associated with a (valid) MFN. */
 #define P2M_INVALID_MFN_TYPES (P2M_POD_TYPES                  \
                                | p2m_to_mask(p2m_mmio_direct) \
-                               | P2M_PAGING_TYPES)
+                               | P2M_PAGING_TYPES             \
+                               | P2M_EPC_TYPES)
 
 /* Broken type: the frame backing this pfn has failed in hardware
  * and must not be touched. */
@@ -153,6 +157,7 @@ typedef unsigned int p2m_query_t;
 
 /* Useful predicates */
 #define p2m_is_ram(_t) (p2m_to_mask(_t) & P2M_RAM_TYPES)
+#define p2m_is_epc(_t) (p2m_to_mask(_t) & P2M_EPC_TYPES)
 #define p2m_is_hole(_t) (p2m_to_mask(_t) & P2M_HOLE_TYPES)
 #define p2m_is_mmio(_t) (p2m_to_mask(_t) & P2M_MMIO_TYPES)
 #define p2m_is_readonly(_t) (p2m_to_mask(_t) & P2M_RO_TYPES)
@@ -163,7 +168,7 @@ typedef unsigned int p2m_query_t;
 /* Grant types are *not* considered valid, because they can be
    unmapped at any time and, unless you happen to be the shadow or p2m
    implementations, there's no way of synchronising against that. */
-#define p2m_is_valid(_t) (p2m_to_mask(_t) & (P2M_RAM_TYPES | P2M_MMIO_TYPES))
+#define p2m_is_valid(_t) (p2m_to_mask(_t) & (P2M_RAM_TYPES | P2M_MMIO_TYPES | P2M_EPC_TYPES))
 #define p2m_has_emt(_t)  (p2m_to_mask(_t) & (P2M_RAM_TYPES | p2m_to_mask(p2m_mmio_direct)))
 #define p2m_is_pageable(_t) (p2m_to_mask(_t) & P2M_PAGEABLE_TYPES)
 #define p2m_is_paging(_t)   (p2m_to_mask(_t) & P2M_PAGING_TYPES)
@@ -633,6 +638,9 @@ int clear_identity_p2m_entry(struct domain *d, unsigned long gfn);
 /* Add foreign mapping to the guest's p2m table. */
 int p2m_add_foreign(struct domain *tdom, unsigned long fgfn,
                     unsigned long gpfn, domid_t foreign_domid);
+
+int set_epc_p2m_entry(struct domain *d, unsigned long gfn, mfn_t mfn);
+int clear_epc_p2m_entry(struct domain *d, unsigned long gfn, mfn_t mfn);
 
 /* 
  * Populate-on-demand

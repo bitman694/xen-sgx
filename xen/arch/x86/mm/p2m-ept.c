@@ -182,6 +182,9 @@ static void ept_p2m_type_to_flags(struct p2m_domain *p2m, ept_entry_t *entry,
             entry->a = !!cpu_has_vmx_ept_ad;
             entry->d = 0;
             break;
+        case p2m_epc:
+            entry->r = entry->w = entry->x = 1;
+            break;
     }
 
 
