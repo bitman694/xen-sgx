@@ -9,6 +9,7 @@
 #include <asm/paging.h>
 #include <asm/processor.h>
 #include <asm/xstate.h>
+#include <asm/hvm/vmx/sgx.h>
 
 const uint32_t known_features[] = INIT_KNOWN_FEATURES;
 const uint32_t special_features[] = INIT_SPECIAL_FEATURES;
@@ -158,6 +159,44 @@ static void recalculate_xstate(struct cpuid_policy *p)
     }
 }
 
+static void recalculate_sgx(struct cpuid_policy *p, bool_t hide_epc)
+{
+    if ( !p->feat.sgx )
+    {
+        memset(&p->sgx, 0, sizeof (p->sgx));
+        return;
+    }
+
+    if ( !p->sgx.sgx1 )
+    {
+        memset(&p->sgx, 0, sizeof (p->sgx));
+        return;
+    }
+
+    /*
+     * SDM 42.7.2.1 SECS.ATTRIBUTE.XFRM:
+     *
+     * Legal value for SECS.ATTRIBUTE.XFRM conform to these requirements:
+     *  - XFRM[1:0] must be set to 0x3;
+     *  - If processor does not support XSAVE, or if the system software has not
+     *    enabled XSAVE, then XFRM[63:2] must be 0.
+     *  - If the processor does support XSAVE, XFRM must contain a value that
+     *    would be legal if loaded into XCR0.
+     */
+    p->sgx.xfrm_low = 0x3;
+    p->sgx.xfrm_high = 0;
+    if ( p->basic.xsave )
+    {
+        p->sgx.xfrm_low |= p->xstate.xcr0_low;
+        p->sgx.xfrm_high |= p->xstate.xcr0_high;
+    }
+
+    if ( hide_epc )
+    {
+        memset(&p->sgx.raw[0x2], 0, sizeof (struct cpuid_leaf));
+    }
+}
+
 /*
  * Misc adjustments to the policy.  Mostly clobbering reserved fields and
  * duplicating shared fields.  Intentionally hidden fields are annotated.
@@ -239,7 +278,7 @@ static void __init calculate_raw_policy(void)
     {
         switch ( i )
         {
-        case 0x4: case 0x7: case 0xd:
+        case 0x4: case 0x7: case 0xd: case 0x12:
             /* Multi-invocation leaves.  Deferred. */
             continue;
         }
@@ -299,6 +338,19 @@ static void __init calculate_raw_policy(void)
         }
     }
 
+    if ( p->basic.max_leaf >= SGX_CPUID )
+    {
+        /*
+         * For raw policy we just report native CPUID. For EPC on native it's
+         * possible that we will have multiple EPC sections (meaning subleaf 3,
+         * 4, ... may also be valid), but as the policy is for guest so we only
+         * need one EPC section (subleaf 2).
+         */
+        cpuid_count_leaf(SGX_CPUID, 0, &p->sgx.raw[0]);
+        cpuid_count_leaf(SGX_CPUID, 0, &p->sgx.raw[0]);
+        cpuid_count_leaf(SGX_CPUID, 0, &p->sgx.raw[0]);
+    }
+
     /* Extended leaves. */
     cpuid_leaf(0x80000000, &p->extd.raw[0]);
     for ( i = 1; i < min(ARRAY_SIZE(p->extd.raw),
@@ -324,6 +376,8 @@ static void __init calculate_host_policy(void)
     cpuid_featureset_to_policy(boot_cpu_data.x86_capability, p);
     recalculate_xstate(p);
     recalculate_misc(p);
+    /* For host policy we report physical EPC */
+    recalculate_sgx(p, 0);
 
     if ( p->extd.svm )
     {
@@ -357,6 +411,11 @@ static void __init calculate_pv_max_policy(void)
     sanitise_featureset(pv_featureset);
     cpuid_featureset_to_policy(pv_featureset, p);
     recalculate_xstate(p);
+    /*
+     * For PV policy we don't report physical EPC. Actually for PV policy
+     * currently SGX will be disabled.
+     */
+    recalculate_sgx(p, 1);
 
     p->extd.raw[0xa] = EMPTY_LEAF; /* No SVM for PV guests. */
 }
@@ -413,6 +472,13 @@ static void __init calculate_hvm_max_policy(void)
     sanitise_featureset(hvm_featureset);
     cpuid_featureset_to_policy(hvm_featureset, p);
     recalculate_xstate(p);
+    /*
+     * For HVM policy we don't report physical EPC. Actually cpuid policy
+     * should report VM's virtual EPC base and size. However VM's virtual
+     * EPC info will come from toolstack, and only after Xen is notified
+     * VM's cpuid policy should report invalid EPC.
+     */
+    recalculate_sgx(p, 1);
 }
 
 void __init init_guest_cpuid(void)
@@ -528,6 +594,12 @@ void recalculate_cpuid_policy(struct domain *d)
     if ( p->basic.max_leaf < XSTATE_CPUID )
         __clear_bit(X86_FEATURE_XSAVE, fs);
 
+    if ( p->basic.max_leaf < SGX_CPUID )
+    {
+        __clear_bit(X86_FEATURE_SGX, fs);
+        __clear_bit(X86_FEATURE_SGX_LAUNCH_CONTROL, fs);
+    }
+
     sanitise_featureset(fs);
 
     /* Fold host's FDP_EXCP_ONLY and NO_FPU_SEL into guest's view. */
@@ -550,6 +622,12 @@ void recalculate_cpuid_policy(struct domain *d)
 
     recalculate_xstate(p);
     recalculate_misc(p);
+    /*
+     * recalculate_cpuid_policy is also called for domain's cpuid policy,
+     * which is from toolstack via XEN_DOMCTL_set_cpuid, therefore we cannot
+     * hide domain's virtual EPC from toolstack.
+     */
+    recalculate_sgx(p, 0);
 
     for ( i = 0; i < ARRAY_SIZE(p->cache.raw); ++i )
     {
@@ -643,6 +721,13 @@ void guest_cpuid(const struct vcpu *v, uint32_t leaf,
                 return;
 
             *res = p->xstate.raw[subleaf];
+            break;
+
+        case SGX_CPUID:
+            if ( !p->feat.sgx )
+                return;
+
+            *res = p->sgx.raw[subleaf];
             break;
 
         default:
