@@ -489,3 +489,55 @@ void hvm_disable_sgx(struct domain *d)
     hvm_unpopulate_epc(d);
     sgx->enabled = 0;
 }
+
+void hvm_sgx_cpuid(struct domain *d, unsigned int subinput,
+        unsigned int *eax, unsigned int *ebx,
+        unsigned int *ecx, unsigned int *edx)
+{
+    struct sgx_domain *sgx = to_sgx(d);
+    struct sgx_cpuinfo *sc = sgx_boot_cpudata;
+
+    if ( !hvm_sgx_enabled(d) )
+        *eax = *ebx = *ecx = *edx = 0;
+
+    /* Refer to detect_sgx for CPUID.0x12 definition */
+    switch ( subinput )
+    {
+    case 0:
+        {
+            *eax = sc->cap & 0x3;
+            *ebx = sc->miscselect;
+            *ecx = 0;
+            *edx = (sc->max_enclave_size32 & 0xff) |
+                ((sc->max_enclave_size64 & 0xff) << 8);
+        }
+        break;
+    case 1:
+        {
+            *eax = sc->secs_attr_bitmask[0];
+            *ebx = sc->secs_attr_bitmask[1];
+            *ecx = sc->secs_attr_bitmask[2];
+            /* TODO: check guest XSAVE here */
+            *edx = sc->secs_attr_bitmask[3];
+        }
+        break;
+    case 2:
+        {
+            u32 base_lo, base_hi;
+            u32 size_lo, size_hi;
+
+            base_lo = (u32)((sgx->epc_base_pfn << 12) & 0xfffff000);
+            base_hi = (u32)(sgx->epc_base_pfn >> 20);
+            size_lo = (u32)((sgx->epc_npages << 12) & 0xfffff000);
+            size_hi = (u32)(sgx->epc_npages >> 20);
+
+            *eax = base_lo | 0x1;
+            *ebx = base_hi & 0xfffff;
+            *ecx = size_lo | 0x1;
+            *edx = size_hi & 0xfffff;
+        }
+        break;
+    default:
+        *eax = *ebx = *ecx = *edx = 0;
+    }
+}

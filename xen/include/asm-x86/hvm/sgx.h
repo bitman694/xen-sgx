@@ -47,4 +47,9 @@ int hvm_enable_sgx(struct domain *d, unsigned long epc_base_pfn,
         unsigned long epc_npages);
 void hvm_disable_sgx(struct domain *d);
 
+/* Handle CPUID.0x12 from HVM guest */
+void hvm_sgx_cpuid(struct domain *d, unsigned int subinput,
+        unsigned int *eax, unsigned int *ebx,
+        unsigned int *ecx, unsigned int *edx);
+
 #endif  /* __ASM_X86_HVM_SGX_H__ */

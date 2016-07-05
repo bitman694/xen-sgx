@@ -3378,6 +3378,12 @@ void hvm_cpuid(unsigned int input, unsigned int *eax, unsigned int *ebx,
     {
         unsigned int _ebx, _ecx, _edx;
 
+    case 0x0:
+        /* fixing up SGX */
+        if ( hvm_sgx_enabled(d) )
+            if ( *eax < 0x12 )
+                *eax = 0x12;
+        break;
     case 0x1:
         /* Fix up VLAPIC details. */
         *ebx &= 0x00FFFFFFu;
@@ -3439,12 +3445,19 @@ void hvm_cpuid(unsigned int input, unsigned int *eax, unsigned int *ebx,
             /* OSPKE cleared by hvm_featureset.  Fast-forward CR4 back in. */
             if ( v->arch.hvm_vcpu.guest_cr[4] & X86_CR4_PKE )
                 *ecx |= cpufeat_mask(X86_FEATURE_OSPKE);
+
+            if ( !hvm_sgx_enabled(d) )
+                *ebx &= ~X86_FEATURE_SGX;
         }
         break;
 
     case 0xb:
         /* Fix the x2APIC identifier. */
         *edx = v->vcpu_id * 2;
+        break;
+
+    case 0x12:
+        hvm_sgx_cpuid(d, count, eax, ebx, ecx, edx);
         break;
 
     case XSTATE_CPUID:
