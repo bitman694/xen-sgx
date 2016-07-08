@@ -57,6 +57,7 @@
 #include <asm/event.h>
 #include <asm/monitor.h>
 #include <public/arch-x86/cpuid.h>
+#include <asm/hvm/vmx/sgx.h>
 
 static bool_t __initdata opt_force_ept;
 boolean_param("force-ept", opt_force_ept);
@@ -3544,6 +3545,7 @@ void vmx_vmexit_handler(struct cpu_user_regs *regs)
     unsigned long exit_qualification, exit_reason, idtv_info, intr_info = 0;
     unsigned int vector = 0, mode;
     struct vcpu *v = current;
+    bool_t exit_from_sgx_enclave;
 
     __vmread(GUEST_RIP,    &regs->rip);
     __vmread(GUEST_RSP,    &regs->rsp);
@@ -3568,6 +3570,11 @@ void vmx_vmexit_handler(struct cpu_user_regs *regs)
                     regs->eip, 0, 0, 0, 0);
 
     perfc_incra(vmexits, exit_reason);
+
+    /* We need to handle several VMEXITs if VMEXIT is from enclave. Also clear
+     * bit 27 as it is further useless. */
+    exit_from_sgx_enclave = !!(exit_reason & VMX_EXIT_REASONS_FROM_ENCLAVE);
+    exit_reason &= ~VMX_EXIT_REASONS_FROM_ENCLAVE;
 
     /* Handle the interrupt we missed before allowing any more in. */
     switch ( (uint16_t)exit_reason )
@@ -4070,6 +4077,18 @@ void vmx_vmexit_handler(struct cpu_user_regs *regs)
         break;
 
     case EXIT_REASON_INVD:
+       /*
+        * SDM 39.6.5 INVD Handling when Enclave Are Enabled
+        *
+        * INVD cause #GP if EPC is enabled.
+        * FIXME: WBINVD??
+        */
+        if ( exit_from_sgx_enclave )
+        {
+            hvm_inject_hw_exception(TRAP_gp_fault, 0);
+            break;
+        }
+        /* Otherwise passthrough */
     case EXIT_REASON_WBINVD:
     {
         update_guest_eip(); /* Safe: INVD, WBINVD */
@@ -4081,6 +4100,16 @@ void vmx_vmexit_handler(struct cpu_user_regs *regs)
     {
         paddr_t gpa;
 
+        /*
+         * Currently EPT violation from enclave is not possible as all EPC pages
+         * are statically allocated to guest when guest is created. We simply
+         * crash guest in this case.
+         */
+        if ( exit_from_sgx_enclave )
+        {
+            domain_crash(v->domain);
+            break;
+        }
         __vmread(GUEST_PHYSICAL_ADDRESS, &gpa);
         __vmread(EXIT_QUALIFICATION, &exit_qualification);
         ept_handle_violation(exit_qualification, gpa);

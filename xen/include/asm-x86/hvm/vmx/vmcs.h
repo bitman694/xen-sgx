@@ -327,6 +327,8 @@ extern u64 vmx_ept_vpid_cap;
 #define VMX_INTR_SHADOW_MOV_SS          0x00000002
 #define VMX_INTR_SHADOW_SMI             0x00000004
 #define VMX_INTR_SHADOW_NMI             0x00000008
+#define VMX_INTR_ENCLAVE_INTR           0x00000010  /* VMEXIT was incident to
+                                                       enclave mode */
 
 #define VMX_BASIC_REVISION_MASK         0x7fffffff
 #define VMX_BASIC_VMCS_SIZE_MASK        (0x1fffULL << 32)

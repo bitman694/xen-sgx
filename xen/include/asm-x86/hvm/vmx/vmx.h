@@ -153,6 +153,8 @@ static inline void pi_clear_sn(struct pi_desc *pi_desc)
  * Exit Reasons
  */
 #define VMX_EXIT_REASONS_FAILED_VMENTRY 0x80000000
+/* Bit 27 is also set if VMEXIT is from SGX enclave mode */
+#define VMX_EXIT_REASONS_FROM_ENCLAVE   0x08000000
 
 #define EXIT_REASON_EXCEPTION_NMI       0
 #define EXIT_REASON_EXTERNAL_INTERRUPT  1
