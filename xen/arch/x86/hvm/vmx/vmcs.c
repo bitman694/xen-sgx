@@ -1119,6 +1119,18 @@ static int construct_vmcs(struct vcpu *v)
     /* Disable PML anyway here as it will only be enabled in log dirty mode */
     v->arch.hvm_vmx.secondary_exec_control &= ~SECONDARY_EXEC_ENABLE_PML;
 
+    /*
+     * Spec says we need to set this bit for guest to run ENCLS in non-root
+     * mode. Theoretically we'd better do this under hvm_sgx_enabled(v->domain)
+     * but vcpus may be created before SGX is enabled for one guest so we need
+     * to dynamically turn this bit on in this case. Turnning this bit on by
+     * checking global sgx_enabled makes code simplier as we can just do it
+     * here. There's no side effect turnning this bit on for guests that don't
+     * use SGX.
+     */
+    if ( sgx_enabled )
+        v->arch.hvm_vmx.secondary_exec_control |= SECONDARY_EXEC_ENABLE_ENCLS;
+
     /* Host data selectors. */
     __vmwrite(HOST_SS_SELECTOR, __HYPERVISOR_DS);
     __vmwrite(HOST_DS_SELECTOR, __HYPERVISOR_DS);
