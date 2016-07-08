@@ -250,6 +250,9 @@
  */
 #define HVM_PARAM_X87_FIP_WIDTH 36
 
-#define HVM_NR_PARAMS 37
+/* Boolean: Enable SGX */
+#define HVM_PARAM_SGX 37
+
+#define HVM_NR_PARAMS 38
 
 #endif /* __XEN_PUBLIC_HVM_PARAMS_H__ */

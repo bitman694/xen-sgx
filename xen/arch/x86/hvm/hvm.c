@@ -73,6 +73,7 @@
 #include <public/vm_event.h>
 #include <public/arch-x86/cpuid.h>
 #include <asm/cpuid.h>
+#include <asm/hvm/sgx.h>    /* sgx_enabled */
 
 bool_t __read_mostly hvm_enabled;
 
@@ -4903,8 +4904,20 @@ static int hvm_allow_set_param(struct domain *d,
     case HVM_PARAM_IOREQ_SERVER_PFN:
     case HVM_PARAM_NR_IOREQ_SERVER_PAGES:
     case HVM_PARAM_ALTP2M:
+    case HVM_PARAM_SGX:
         if ( value != 0 && a->value != value )
             rc = -EEXIST;
+        break;
+    default:
+        break;
+    }
+
+    switch ( a->index )
+    {
+    case HVM_PARAM_SGX:
+        /* SGX cannot be enabled if hardware doesn't support it */
+        if ( !sgx_enabled )
+            rc = -ENODEV;
         break;
     default:
         break;
@@ -5028,6 +5041,10 @@ static int hvmop_set_param(
         if ( a.value &&
              d->arch.hvm_domain.params[HVM_PARAM_ALTP2M] )
             rc = -EINVAL;
+        /* Currently SGX and nested are mutually exclusive */
+        if ( a.value &&
+             d->arch.hvm_domain.params[HVM_PARAM_SGX] )
+            rc = -EINVAL;
         /* Set up NHVM state for any vcpus that are already up. */
         if ( a.value &&
              !d->arch.hvm_domain.params[HVM_PARAM_NESTEDHVM] )
@@ -5044,6 +5061,14 @@ static int hvmop_set_param(
             break;
         if ( a.value > 1 )
             rc = -EINVAL;
+        if ( a.value &&
+             d->arch.hvm_domain.params[HVM_PARAM_NESTEDHVM] )
+            rc = -EINVAL;
+        break;
+    case HVM_PARAM_SGX:
+        if ( a.value > 1 )
+            rc = -EINVAL;
+        /* Currently SGX and nested are mutually exclusive */
         if ( a.value &&
              d->arch.hvm_domain.params[HVM_PARAM_NESTEDHVM] )
             rc = -EINVAL;
