@@ -2609,6 +2609,46 @@ static int is_last_branch_msr(u32 ecx)
     return 0;
 }
 
+static int vmx_sgx_msr_read_intercept(unsigned int msr, u64 *msr_content)
+{
+    struct vcpu *v = current;
+    u64 data;
+    int r = 1;
+
+    /* SGX and nested are mutually exclusive. */
+    if ( nestedhvm_enabled(v->domain) )
+        return 0;
+
+    if ( !hvm_sgx_allowed(v->domain) )
+        return 0;
+
+    switch ( msr )
+    {
+    case MSR_IA32_FEATURE_CONTROL:
+        data = (IA32_FEATURE_CONTROL_LOCK |
+                IA32_FEATURE_CONTROL_SGX_ENABLE);
+        break;
+    default:
+        r = 0;
+        break;
+    }
+
+    *msr_content = data;
+    return r;
+}
+
+static int vmx_sgx_msr_write_intercept(unsigned int msr, u64 msr_content)
+{
+    struct vcpu *v = current;
+
+    /* SGX and nested are mutually exclusive. */
+    if ( nestedhvm_enabled(v->domain) )
+        return 0;
+
+    /* silently ignore for now */
+    return 1;
+}
+
 static int vmx_msr_read_intercept(unsigned int msr, uint64_t *msr_content)
 {
     HVM_DBG_LOG(DBG_LEVEL_MSR, "ecx=%#x", msr);
@@ -2628,6 +2668,11 @@ static int vmx_msr_read_intercept(unsigned int msr, uint64_t *msr_content)
         __vmread(GUEST_IA32_DEBUGCTL, msr_content);
         break;
     case MSR_IA32_FEATURE_CONTROL:
+        /* If neither SGX nor nested is supported, this MSR should not be
+         * touched */
+        if ( !vmx_sgx_msr_read_intercept(msr, msr_content) &&
+                !nvmx_msr_read_intercept(msr, msr_content) )
+            goto gp_fault;
     case MSR_IA32_VMX_BASIC...MSR_IA32_VMX_VMFUNC:
         if ( !nvmx_msr_read_intercept(msr, msr_content) )
             goto gp_fault;
@@ -2854,6 +2899,10 @@ static int vmx_msr_write_intercept(unsigned int msr, uint64_t msr_content)
         break;
     }
     case MSR_IA32_FEATURE_CONTROL:
+        /* See vmx_msr_read_intercept */
+        if ( !vmx_sgx_msr_write_intercept(msr, msr_content) &&
+                !nvmx_msr_write_intercept(msr, msr_content) )
+            goto gp_fault;
     case MSR_IA32_VMX_BASIC...MSR_IA32_VMX_TRUE_ENTRY_CTLS:
         if ( !nvmx_msr_write_intercept(msr, msr_content) )
             goto gp_fault;
