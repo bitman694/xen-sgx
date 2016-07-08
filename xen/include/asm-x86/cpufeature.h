@@ -98,6 +98,9 @@
 #define cpu_has_smap            boot_cpu_has(X86_FEATURE_SMAP)
 #define cpu_has_sha             boot_cpu_has(X86_FEATURE_SHA)
 
+/* CPUID level 0x00000007:0.ecx */
+#define cpu_has_sgx_launch_control  boot_cpu_has(X86_FEATURE_SGX_LAUNCH_CONTROL)
+
 /* CPUID level 0x80000007.edx */
 #define cpu_has_itsc            boot_cpu_has(X86_FEATURE_ITSC)
 

@@ -470,6 +470,8 @@ static int vmx_vcpu_initialise(struct vcpu *v)
     if ( v->vcpu_id == 0 )
         v->arch.user_regs.rax = 1;
 
+    sgx_vcpu_init(v);
+
     return 0;
 }
 
@@ -1048,6 +1050,9 @@ static void vmx_ctxt_switch_to(struct vcpu *v)
 
     if ( v->domain->arch.hvm_domain.pi_ops.switch_to )
         v->domain->arch.hvm_domain.pi_ops.switch_to(v);
+
+    if ( domain_has_sgx(v->domain) )
+        sgx_ctxt_switch_to(v);
 }
 
 
@@ -2876,8 +2881,18 @@ static int vmx_msr_read_intercept(unsigned int msr, uint64_t *msr_content)
         __vmread(GUEST_IA32_DEBUGCTL, msr_content);
         break;
     case MSR_IA32_FEATURE_CONTROL:
+        /* If neither SGX nor nested is supported, this MSR should not be
+         * touched */
+        if ( !sgx_msr_read_intercept(current, msr, msr_content) &&
+                !nvmx_msr_read_intercept(msr, msr_content) )
+            goto gp_fault;
+        break;
     case MSR_IA32_VMX_BASIC...MSR_IA32_VMX_VMFUNC:
         if ( !nvmx_msr_read_intercept(msr, msr_content) )
+            goto gp_fault;
+        break;
+    case MSR_IA32_SGXLEPUBKEYHASH0...MSR_IA32_SGXLEPUBKEYHASH3:
+        if ( !sgx_msr_read_intercept(current, msr, msr_content) )
             goto gp_fault;
         break;
     case MSR_IA32_MISC_ENABLE:
@@ -3119,8 +3134,17 @@ static int vmx_msr_write_intercept(unsigned int msr, uint64_t msr_content)
         break;
     }
     case MSR_IA32_FEATURE_CONTROL:
+        /* See vmx_msr_read_intercept */
+        if ( !sgx_msr_write_intercept(current, msr, msr_content) &&
+                !nvmx_msr_write_intercept(msr, msr_content) )
+            goto gp_fault;
+        break;
     case MSR_IA32_VMX_BASIC...MSR_IA32_VMX_TRUE_ENTRY_CTLS:
         if ( !nvmx_msr_write_intercept(msr, msr_content) )
+            goto gp_fault;
+        break;
+    case MSR_IA32_SGXLEPUBKEYHASH0...MSR_IA32_SGXLEPUBKEYHASH3:
+        if ( !sgx_msr_write_intercept(current, msr, msr_content) )
             goto gp_fault;
         break;
     case MSR_P6_PERFCTR(0)...MSR_P6_PERFCTR(7):

@@ -405,6 +405,200 @@ void hvm_destroy_epc(struct domain *d)
     hvm_reset_epc(d, true);
 }
 
+/* Whether IA32_SGXLEPUBKEYHASHn are physically *unlocked* by BIOS */
+bool_t sgx_ia32_sgxlepubkeyhash_writable(void)
+{
+    uint64_t sgx_lc_enabled = IA32_FEATURE_CONTROL_SGX_ENABLE |
+                              IA32_FEATURE_CONTROL_SGX_LAUNCH_CONTROL_ENABLE |
+                              IA32_FEATURE_CONTROL_LOCK;
+    uint64_t val;
+
+    rdmsrl(MSR_IA32_FEATURE_CONTROL, val);
+
+    return (val & sgx_lc_enabled) == sgx_lc_enabled;
+}
+
+bool_t domain_has_sgx(struct domain *d)
+{
+    /* hvm_epc_populated(d) implies CPUID has SGX */
+    return hvm_epc_populated(d);
+}
+
+bool_t domain_has_sgx_launch_control(struct domain *d)
+{
+    struct cpuid_policy *p = d->arch.cpuid;
+
+    if ( !domain_has_sgx(d) )
+        return false;
+
+    /* Unnecessary but check anyway */
+    if ( !cpu_has_sgx_launch_control )
+        return false;
+
+    return !!p->feat.sgx_launch_control;
+}
+
+/* Digest of Intel signing key. MSR's default value after reset. */
+#define SGX_INTEL_DEFAULT_LEPUBKEYHASH0 0xa6053e051270b7ac
+#define SGX_INTEL_DEFAULT_LEPUBKEYHASH1 0x6cfbe8ba8b3b413d
+#define SGX_INTEL_DEFAULT_LEPUBKEYHASH2 0xc4916d99f2b3735d
+#define SGX_INTEL_DEFAULT_LEPUBKEYHASH3 0xd4f8c05909f9bb3b
+
+void sgx_vcpu_init(struct vcpu *v)
+{
+    struct sgx_vcpu *sgxv = to_sgx_vcpu(v);
+
+    memset(sgxv, 0, sizeof (*sgxv));
+
+    if ( sgx_ia32_sgxlepubkeyhash_writable() )
+    {
+        /*
+         * If physical MSRs are writable, set vcpu's default value to Intel's
+         * default value. For real machine, after reset, MSRs contain Intel's
+         * default value.
+         */
+        sgxv->ia32_sgxlepubkeyhash[0] = SGX_INTEL_DEFAULT_LEPUBKEYHASH0;
+        sgxv->ia32_sgxlepubkeyhash[1] = SGX_INTEL_DEFAULT_LEPUBKEYHASH1;
+        sgxv->ia32_sgxlepubkeyhash[2] = SGX_INTEL_DEFAULT_LEPUBKEYHASH2;
+        sgxv->ia32_sgxlepubkeyhash[3] = SGX_INTEL_DEFAULT_LEPUBKEYHASH3;
+
+        sgxv->readable = 1;
+        sgxv->writable = domain_has_sgx_launch_control(v->domain);
+    }
+    else
+    {
+        uint64_t v;
+        /*
+         * Although SDM says if SGX is present, then IA32_SGXLEPUBKEYHASHn are
+         * available for read, but in reality for SKYLAKE client machines,
+         * those MSRs are not available if SGX is present, so we cannot rely on
+         * cpu_has_sgx to determine whether to we are able to read MSRs,
+         * instead, we always use rdmsr_safe.
+         */
+        sgxv->readable = rdmsr_safe(MSR_IA32_SGXLEPUBKEYHASH0, v) ? 0 : 1;
+
+        if ( !sgxv->readable )
+            return;
+
+        rdmsr_safe(MSR_IA32_SGXLEPUBKEYHASH0, sgxv->ia32_sgxlepubkeyhash[0]);
+        rdmsr_safe(MSR_IA32_SGXLEPUBKEYHASH1, sgxv->ia32_sgxlepubkeyhash[1]);
+        rdmsr_safe(MSR_IA32_SGXLEPUBKEYHASH2, sgxv->ia32_sgxlepubkeyhash[2]);
+        rdmsr_safe(MSR_IA32_SGXLEPUBKEYHASH3, sgxv->ia32_sgxlepubkeyhash[3]);
+    }
+}
+
+void sgx_ctxt_switch_to(struct vcpu *v)
+{
+    struct sgx_vcpu *sgxv = to_sgx_vcpu(v);
+
+    if ( sgxv->writable && sgx_ia32_sgxlepubkeyhash_writable() )
+    {
+        wrmsrl(MSR_IA32_SGXLEPUBKEYHASH0, sgxv->ia32_sgxlepubkeyhash[0]);
+        wrmsrl(MSR_IA32_SGXLEPUBKEYHASH1, sgxv->ia32_sgxlepubkeyhash[1]);
+        wrmsrl(MSR_IA32_SGXLEPUBKEYHASH2, sgxv->ia32_sgxlepubkeyhash[2]);
+        wrmsrl(MSR_IA32_SGXLEPUBKEYHASH3, sgxv->ia32_sgxlepubkeyhash[3]);
+    }
+}
+
+int sgx_msr_read_intercept(struct vcpu *v, unsigned int msr, u64 *msr_content)
+{
+    struct sgx_vcpu *sgxv = to_sgx_vcpu(v);
+    u64 data;
+    int r = 1;
+
+    if ( !domain_has_sgx(v->domain) )
+        return 0;
+
+    switch ( msr )
+    {
+    case MSR_IA32_FEATURE_CONTROL:
+        data = (IA32_FEATURE_CONTROL_LOCK |
+                IA32_FEATURE_CONTROL_SGX_ENABLE);
+        /*
+         * If physical IA32_SGXLEPUBKEYHASHn are writable, then we always
+         * allow guest to be able to change IA32_SGXLEPUBKEYHASHn at runtime.
+         */
+        if ( sgx_ia32_sgxlepubkeyhash_writable() &&
+                domain_has_sgx_launch_control(v->domain) )
+            data |= IA32_FEATURE_CONTROL_SGX_LAUNCH_CONTROL_ENABLE;
+
+        *msr_content = data;
+
+        break;
+    case MSR_IA32_SGXLEPUBKEYHASH0...MSR_IA32_SGXLEPUBKEYHASH3:
+        /*
+         * SDM 35.1 Model-Specific Registers, table 35-2.
+         *
+         * IA32_SGXLEPUBKEYHASH[0..3]:
+         *
+         * Read permitted if CPUID.0x12.0:EAX[0] = 1.
+         *
+         * In reality, MSRs may not be readable even SGX is present, in which
+         * case guest is not allowed to read either.
+         */
+        if ( !sgxv->readable )
+        {
+            r = 0;
+            break;
+        }
+
+        data = sgxv->ia32_sgxlepubkeyhash[msr - MSR_IA32_SGXLEPUBKEYHASH0];
+
+        *msr_content = data;
+
+        break;
+    default:
+        r = 0;
+        break;
+    }
+
+    return r;
+}
+
+int sgx_msr_write_intercept(struct vcpu *v, unsigned int msr, u64 msr_content)
+{
+    struct sgx_vcpu *sgxv = to_sgx_vcpu(v);
+    int r = 1;
+
+    if ( !domain_has_sgx(v->domain) )
+        return 0;
+
+    switch ( msr )
+    {
+    case MSR_IA32_FEATURE_CONTROL:
+        /* sliently drop */
+        break;
+    case MSR_IA32_SGXLEPUBKEYHASH0...MSR_IA32_SGXLEPUBKEYHASH3:
+        /*
+         * SDM 35.1 Model-Specific Registers, table 35-2.
+         *
+         * IA32_SGXLEPUBKEYHASH[0..3]:
+         *
+         * - If CPUID.0x7.0:ECX[30] = 1, FEATURE_CONTROL[17] is available.
+         * - Write permitted if CPUID.0x12.0:EAX[0] = 1 &&
+         *      FEATURE_CONTROL[17] = 1 && FEATURE_CONTROL[0] = 1.
+         *
+         * sgxv->writable == 1 means sgx_ia32_sgxlepubkeyhash_writable() and
+         * domain_has_sgx_launch_control(d) both are true.
+         */
+        if ( !sgxv->writable )
+        {
+            r = 0;
+            break;
+        }
+
+        sgxv->ia32_sgxlepubkeyhash[msr - MSR_IA32_SGXLEPUBKEYHASH0] =
+            msr_content;
+
+        break;
+    default:
+        r = 0;
+        break;
+    }
+
+    return r;
+}
+
 static bool_t sgx_enabled_in_bios(void)
 {
     uint64_t val, sgx_enabled = IA32_FEATURE_CONTROL_SGX_ENABLE |

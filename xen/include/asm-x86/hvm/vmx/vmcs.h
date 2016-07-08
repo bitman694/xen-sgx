@@ -160,6 +160,8 @@ struct arch_vmx_struct {
      * pCPU and wakeup the related vCPU.
      */
     struct pi_blocking_vcpu pi_blocking;
+
+    struct sgx_vcpu sgx;
 };
 
 int vmx_create_vmcs(struct vcpu *v);

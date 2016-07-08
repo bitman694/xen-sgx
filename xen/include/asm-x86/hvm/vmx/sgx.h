@@ -75,4 +75,26 @@ int hvm_populate_epc(struct domain *d, unsigned long epc_base_pfn,
 int hvm_reset_epc(struct domain *d, bool_t free_epc);
 void hvm_destroy_epc(struct domain *d);
 
+/* Per-vcpu SGX structure */
+struct sgx_vcpu {
+    uint64_t ia32_sgxlepubkeyhash[4];
+    /*
+     * Although SDM says if SGX is present, then IA32_SGXLEPUBKEYHASHn are
+     * available for read, but in reality for SKYLAKE client machines, those
+     * those MSRs are not available if SGX is present.
+     */
+    bool_t readable;
+    bool_t writable;
+};
+#define to_sgx_vcpu(v)  (&(v->arch.hvm_vmx.sgx))
+
+bool_t sgx_ia32_sgxlepubkeyhash_writable(void);
+bool_t domain_has_sgx(struct domain *d);
+bool_t domain_has_sgx_launch_control(struct domain *d);
+
+void sgx_vcpu_init(struct vcpu *v);
+void sgx_ctxt_switch_to(struct vcpu *v);
+int sgx_msr_read_intercept(struct vcpu *v, unsigned int msr, u64 *msr_content);
+int sgx_msr_write_intercept(struct vcpu *v, unsigned int msr, u64 msr_content);
+
 #endif  /* __ASM_X86_HVM_VMX_SGX_H__ */
