@@ -62,4 +62,12 @@ int libxl__arch_domain_construct_memmap(libxl__gc *gc,
                                         uint32_t domid,
                                         struct xc_dom_image *dom);
 
+/* arch specific to reserve guest physical address space */
+_hidden
+int libxl__arch_reserve_memory(libxl__gc *gc,
+                               uint32_t domid,
+                               libxl_domain_config *d_config,
+                               libxl__domain_build_state *state,
+                               struct xc_dom_image *dom);
+
 #endif

@@ -1554,6 +1554,34 @@ static int meminit_hvm(struct xc_dom_image *dom)
     DPRINTF("  2MB PAGES: 0x%016lx\n", stat_2mb_pages);
     DPRINTF("  1GB PAGES: 0x%016lx\n", stat_1gb_pages);
 
+    /* Enable SGX and populate EPC for guest */
+    if (dom->sgx.epc_base_pfn && dom->sgx.epc_npages) {
+        xc_sgx_dominfo_t dinfo;
+
+        /* First we need to allow guest to use SGX */
+        rc = xc_hvm_param_set(dom->xch, dom->guest_domid, HVM_PARAM_SGX, 1);
+        if (rc) {
+            ERROR("xc_hvm_param_set for SGX failed\n");
+            goto error_out;
+        }
+
+        DOMPRINTF("Trying to enable SGX for dom %d: "
+                "EPC BASE 0x%lx, SIZE 0x%lx.\n",
+                (int)dom->guest_domid,
+                (unsigned long)dom->sgx.epc_base_pfn << 12,
+                (unsigned long)dom->sgx.epc_npages << 12);
+
+        dinfo.domid = dom->guest_domid;
+        dinfo.epc_base_pfn = dom->sgx.epc_base_pfn;
+        dinfo.epc_npages = dom->sgx.epc_npages;
+
+        rc = xc_sgx_set_dominfo(dom->xch, &dinfo);
+        if (rc) {
+            ERROR("Enable SGX and populate EPC failed\n");
+            goto error_out;
+        }
+    }
+
     rc = 0;
     goto out;
  error_out:
@@ -1769,6 +1797,18 @@ int xc_dom_feature_translated(struct xc_dom_image *dom)
         return 1;
 
     return elf_xen_feature_get(XENFEAT_auto_translated_physmap, dom->f_active);
+}
+
+int xc_dom_init_sgx(struct xc_dom_image *dom, xen_pfn_t epc_base_pfn,
+                    xen_pfn_t epc_npages)
+{
+    if (!epc_base_pfn || !epc_npages)
+        return -EINVAL;
+
+    dom->sgx.epc_base_pfn = epc_base_pfn;
+    dom->sgx.epc_npages = epc_npages;
+
+    return 0;
 }
 
 /* ------------------------------------------------------------------------ */

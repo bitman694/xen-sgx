@@ -1032,6 +1032,14 @@ int libxl__build_hvm(libxl__gc *gc, uint32_t domid,
         goto out;
     }
 
+    /* On x86, reserve guest address space for EPC. Call after we are done with
+     * all RDMs. */
+    rc = libxl__arch_reserve_memory(gc, domid, d_config, state, dom);
+    if (rc) {
+        LOG(ERROR, "libxl__arch_reserve_memory failed\n");
+        goto out;
+    }
+
     if (info->num_vnuma_nodes != 0) {
         int i;
 

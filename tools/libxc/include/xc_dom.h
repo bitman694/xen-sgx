@@ -56,6 +56,14 @@ struct xc_dom_phys {
     xen_pfn_t count;
 };
 
+#if defined(__i386__) || defined(__x86_64__)
+struct xc_dom_sgx {
+    /* valid if both of them are not 0 */
+    xen_pfn_t epc_base_pfn;
+    xen_pfn_t epc_npages;
+};
+#endif
+
 struct xc_dom_image {
     /* files */
     void *kernel_blob;
@@ -214,7 +222,16 @@ struct xc_dom_image {
 
     /* Extra SMBIOS structures passed to HVMLOADER */
     struct xc_hvm_firmware_module smbios_module;
+
+#if defined(__i386__) || defined(__x86_64__)
+    struct xc_dom_sgx sgx;
+#endif
 };
+
+#if defined(__i386__) || defined(__x86_64__)
+int xc_dom_init_sgx(struct xc_dom_image *dom, xen_pfn_t epc_base_pfn,
+                    xen_pfn_t epc_npages);
+#endif
 
 #if defined(__i386__) || defined(__x86_64__)
 /* C representation of the x86/HVM start info layout.

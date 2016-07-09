@@ -503,6 +503,9 @@ int libxl__arch_domain_construct_memmap(libxl__gc *gc,
     if (highmem_size)
         e820_entries++;
 
+    if (dom->sgx.epc_base_pfn)
+        e820_entries++;
+
     if (e820_entries >= E820MAX) {
         LOG(ERROR, "Ooops! Too many entries in the memory map!");
         rc = ERROR_INVAL;
@@ -533,6 +536,13 @@ int libxl__arch_domain_construct_memmap(libxl__gc *gc,
         e820[nr].addr = ((uint64_t)1 << 32);
         e820[nr].size = highmem_size;
         e820[nr].type = E820_RAM;
+        nr++;
+    }
+
+    if (dom->sgx.epc_base_pfn) {
+        e820[nr].addr = dom->sgx.epc_base_pfn << 12;
+        e820[nr].size = dom->sgx.epc_npages << 12;
+        e820[nr].type = E820_RESERVED;
     }
 
     if (xc_domain_set_memory_map(CTX->xch, domid, e820, e820_entries) != 0) {
@@ -542,6 +552,43 @@ int libxl__arch_domain_construct_memmap(libxl__gc *gc,
 
 out:
     return rc;
+}
+
+int libxl__arch_reserve_memory(libxl__gc *gc,
+                               uint32_t domid,
+                               libxl_domain_config *d_config,
+                               libxl__domain_build_state *state,
+                               struct xc_dom_image *dom)
+{
+    uint64_t epc_base, epc_size;
+
+    /*
+     * Reserve address space for EPC.
+     *
+     * I thought about just putting EPC right after lowmem_end, but looks this
+     * cannot work, as pci_setup in hvmloader will try to adjust lowmem_end and
+     * relocate part of lowmem to highmem, if PCI space is too large and needs
+     * to occupy part of memory space. And obviously we cannot relocate EPC
+     * space so this cannot work.
+     *
+     * pci_setup may also relocte PCI space to >4G address, so we cannot neither
+     * simply put EPC base at 4G, if there's no highmem. Currently, for sure,
+     * put EPC base address to dom->highmem_end + 8G, which should be very safe.
+     * The disadvantage is in this case EPC base will be 64-bit address, which
+     * should be OK.
+     */
+    /* EPC size has been aligned */
+    epc_size = d_config->b_info.u.hvm.sgx.epckb * 1024;
+    if (!epc_size)
+        goto out;
+    epc_base = 8 * (1ul << 32);
+
+    printf("Reserve address space for EPC: base 0x%lx, size 0x%lx\n",
+            epc_base, epc_size);
+
+    return xc_dom_init_sgx(dom, epc_base >> 12, epc_size >> 12);
+out:
+    return 0;
 }
 
 /*
