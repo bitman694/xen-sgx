@@ -44,7 +44,7 @@ DefinitionBlock ("DSDT.aml", "DSDT", 2, "Xen", "HVM", 0)
     Scope (\_SB)
     {
        /* ACPI_INFO_PHYSICAL_ADDRESS == 0xFC000000 */
-       OperationRegion(BIOS, SystemMemory, 0xFC000000, 40)
+       OperationRegion(BIOS, SystemMemory, 0xFC000000, 56)
        Field(BIOS, ByteAcc, NoLock, Preserve) {
            UAR1, 1,
            UAR2, 1,
@@ -60,7 +60,9 @@ DefinitionBlock ("DSDT.aml", "DSDT", 2, "Xen", "HVM", 0)
            LMIN, 32,
            HMIN, 32,
            LLEN, 32,
-           HLEN, 32
+           HLEN, 32,
+           EMIN, 64,
+           ELEN, 64
        }
 
         /* Fix HCT test for 0x400 pci memory:
@@ -474,6 +476,55 @@ DefinitionBlock ("DSDT.aml", "DSDT", 2, "Xen", "HVM", 0)
                         Return(PKG)
                     }
                 }
+            }
+        }
+
+        Device (EPC)
+        {
+            Name (_HID, EisaId ("INT0E0C"))
+            Name (_STR, Unicode ("Enclave Page Cache 1.5"))
+            Name (_MLS, Package (0x01)
+            {
+                Package (0x02)
+                {
+                    "en",
+                    Unicode ("Enclave Page Cache 1.5")
+                }
+            })
+            Name (RBUF, ResourceTemplate ()
+            {
+                QWordMemory (ResourceConsumer, PosDecode, MinFixed, MaxFixed,
+                    Cacheable, ReadWrite,
+                    0x0000000000000000, // Granularity
+                    0x0000000000000000, // Range Minimum
+                    0x0000000000000000, // Range Maximum
+                    0x0000000000000000, // Translation Offset
+                    0x0000000000000001, // Length
+                    ,, _Y04,
+                    AddressRangeMemory, TypeStatic)
+            })
+
+            Method(_CRS, 0, NotSerialized) // _CRS: Current Resource Settings
+            {
+                CreateQwordField (RBUF, \_SB.EPC._Y04._MIN, EMIN) // _MIN: Minimuum Base Address
+                CreateQwordField (RBUF, \_SB.EPC._Y04._MAX, EMAX) // _MIN: Maximum Base Address
+                CreateQwordField (RBUF, \_SB.EPC._Y04._LEN, ELEN) // _LEN: Length
+                Store(\_SB.EMIN, EMIN)
+                Store(\_SB.ELEN, ELEN)
+                Add(EMIN, ELEN, EMAX)
+                Subtract(EMAX, One, EMAX)
+
+                Return (RBUF)
+            }
+
+            Method(_STA, 0, NotSerialized) // _STA: Status
+            {
+                IF ((\_SB.ELEN != Zero))
+                {
+                    Return (0x0F)
+                }
+
+                Return (Zero)
             }
         }
     }

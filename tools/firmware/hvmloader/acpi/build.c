@@ -54,6 +54,7 @@ struct acpi_info {
     uint32_t madt_lapic0_addr;  /* 16   - Address of first MADT LAPIC struct */
     uint32_t vm_gid_addr;       /* 20   - Address of VM generation id buffer */
     uint64_t pci_hi_min, pci_hi_len; /* 24, 32 - PCI I/O hole boundaries */
+    uint64_t epc_min, epc_len;    /* 40, 48 - EPC resource */
 };
 
 static void set_checksum(
@@ -628,6 +629,34 @@ void acpi_build_tables(struct acpi_config *config, unsigned int physical)
     {
         acpi_info->pci_hi_min = pci_hi_mem_start;
         acpi_info->pci_hi_len = pci_hi_mem_end - pci_hi_mem_start;
+    }
+
+
+    {
+        uint64_t epc_base, epc_size;
+        unsigned int eax, ebx, ecx, edx;
+
+        /*
+         * Reaching here the SGX should have already been enabled for domain, and we
+         * simply relay on hypervisor emulates SGX cpuid correctly.
+         */
+        cpuid_count(0x12, 0x2, &eax, &ebx, &ecx, &edx);
+        /* SGX not enabled for this domain */
+        if (!(eax & 0x1) || !(ecx & 0x1)) {
+            printf("%s: invalid EPC by CPUID.0x12.0x2: "
+                    "eax 0x%x, ebx 0x%x, ecx 0x%x, edx 0x%x", __func__,
+                    (unsigned int)eax, (unsigned int)ebx,
+                    (unsigned int)ecx, (unsigned int)edx);
+            return;
+        }
+
+        epc_base = ((((uint64_t)(ebx & 0xfffff)) << 32) +
+                   ((uint64_t)(eax & 0xfffff000)));
+        epc_size = ((((uint64_t)(edx & 0xfffff)) << 32) +
+                   ((uint64_t)(ecx & 0xfffff000)));
+
+        acpi_info->epc_min = epc_base;
+        acpi_info->epc_len = epc_size;
     }
 
     return;
