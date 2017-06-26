@@ -2059,6 +2059,12 @@ int nvmx_msr_read_intercept(unsigned int msr, u64 *msr_content)
                SECONDARY_EXEC_ENABLE_VPID |
                SECONDARY_EXEC_UNRESTRICTED_GUEST |
                SECONDARY_EXEC_ENABLE_EPT;
+        /*
+         * If SGX is exposed to guest, then ENABLE_ENCLS bit must also be
+         * exposed to guest.
+         */
+        if ( domain_has_sgx(d) )
+            data |= SECONDARY_EXEC_ENABLE_ENCLS;
         data = gen_vmx_msr(data, 0, host_data);
         break;
     case MSR_IA32_VMX_EXIT_CTLS:
@@ -2291,6 +2297,11 @@ int nvmx_n2_vmexit_handler(struct cpu_user_regs *regs,
     case EXIT_REASON_VMXON:
     case EXIT_REASON_INVEPT:
     case EXIT_REASON_XSETBV:
+    /*
+     * L0 doesn't turn on ENCLS VMEXIT now, so ENCLS VMEXIT must come from
+     * L2 guest, and is because of ENCLS VMEXIT is turned on by L1.
+     */
+    case EXIT_REASON_ENCLS:
         /* inject to L1 */
         nvcpu->nv_vmexit_pending = 1;
         break;

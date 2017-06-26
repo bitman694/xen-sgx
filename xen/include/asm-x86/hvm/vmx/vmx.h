@@ -210,6 +210,7 @@ static inline void pi_clear_sn(struct pi_desc *pi_desc)
 #define EXIT_REASON_APIC_WRITE          56
 #define EXIT_REASON_INVPCID             58
 #define EXIT_REASON_VMFUNC              59
+#define EXIT_REASON_ENCLS               60
 #define EXIT_REASON_PML_FULL            62
 #define EXIT_REASON_XSAVES              63
 #define EXIT_REASON_XRSTORS             64
