@@ -232,6 +232,7 @@ extern u32 vmx_vmentry_control;
 #define SECONDARY_EXEC_ENABLE_INVPCID           0x00001000
 #define SECONDARY_EXEC_ENABLE_VM_FUNCTIONS      0x00002000
 #define SECONDARY_EXEC_ENABLE_VMCS_SHADOWING    0x00004000
+#define SECONDARY_EXEC_ENABLE_ENCLS             0x00008000
 #define SECONDARY_EXEC_ENABLE_PML               0x00020000
 #define SECONDARY_EXEC_ENABLE_VIRT_EXCEPTIONS   0x00040000
 #define SECONDARY_EXEC_XSAVES                   0x00100000
@@ -312,6 +313,8 @@ extern u64 vmx_ept_vpid_cap;
     (vmx_secondary_exec_control & SECONDARY_EXEC_XSAVES)
 #define cpu_has_vmx_tsc_scaling \
     (vmx_secondary_exec_control & SECONDARY_EXEC_TSC_SCALING)
+#define cpu_has_vmx_encls \
+    (vmx_secondary_exec_control & SECONDARY_EXEC_ENABLE_ENCLS)
 
 #define VMCS_RID_TYPE_MASK              0x80000000
 
