@@ -24,6 +24,7 @@ void *vzalloc(size_t size);
 void vfree(void *va);
 
 void __iomem *ioremap(paddr_t, size_t);
+void __iomem *ioremap_cache(paddr_t, size_t);
 
 static inline void iounmap(void __iomem *va)
 {

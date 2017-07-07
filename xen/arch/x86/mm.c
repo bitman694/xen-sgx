@@ -6284,9 +6284,10 @@ void *__init arch_vmap_virt_end(void)
     return (void *)fix_to_virt(__end_of_fixed_addresses);
 }
 
-void __iomem *ioremap(paddr_t pa, size_t len)
+static void __iomem *__ioremap(paddr_t pa, size_t len, bool_t cache)
 {
     mfn_t mfn = _mfn(PFN_DOWN(pa));
+    unsigned int flags = cache ? PAGE_HYPERVISOR : PAGE_HYPERVISOR_NOCACHE;
     void *va;
 
     WARN_ON(page_is_ram_type(mfn_x(mfn), RAM_TYPE_CONVENTIONAL));
@@ -6299,10 +6300,20 @@ void __iomem *ioremap(paddr_t pa, size_t len)
         unsigned int offs = pa & (PAGE_SIZE - 1);
         unsigned int nr = PFN_UP(offs + len);
 
-        va = __vmap(&mfn, nr, 1, 1, PAGE_HYPERVISOR_NOCACHE, VMAP_DEFAULT) + offs;
+        va = __vmap(&mfn, nr, 1, 1, flags, VMAP_DEFAULT) + offs;
     }
 
     return (void __force __iomem *)va;
+}
+
+void __iomem *ioremap(paddr_t pa, size_t len)
+{
+    return __ioremap(pa, len, false);
+}
+
+void __iomem *ioremap_cache(paddr_t pa, size_t len)
+{
+    return __ioremap(pa, len, true);
 }
 
 int create_perdomain_mapping(struct domain *d, unsigned long va,
