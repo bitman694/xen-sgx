@@ -3858,6 +3858,9 @@ static void hvm_s3_suspend(struct domain *d)
 
     hvm_vcpu_reset_state(d->vcpu[0], 0xf000, 0xfff0);
 
+    if ( hvm_funcs.s3_suspend )
+        hvm_funcs.s3_suspend(d);
+
     domain_unlock(d);
 }
 

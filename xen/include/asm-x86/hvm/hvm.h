@@ -226,6 +226,9 @@ struct hvm_function_table {
         /* Architecture function to setup TSC scaling ratio */
         void (*setup)(struct vcpu *v);
     } tsc_scaling;
+
+    /* Domain S3 suspend */
+    void (*s3_suspend)(struct domain *d);
 };
 
 extern struct hvm_function_table hvm_funcs;
