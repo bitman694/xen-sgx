@@ -1252,6 +1252,8 @@ _hidden int libxl__device_vkb_setdefault(libxl__gc *gc, libxl_device_vkb *vkb);
 _hidden int libxl__device_pci_setdefault(libxl__gc *gc, libxl_device_pci *pci);
 _hidden void libxl__rdm_setdefault(libxl__gc *gc,
                                    libxl_domain_build_info *b_info);
+_hidden void libxl__sgx_setdefault(libxl__gc *gc,
+                                   libxl_domain_build_info *b_info);
 _hidden int libxl__device_p9_setdefault(libxl__gc *gc,
                                         libxl_device_p9 *p9);
 

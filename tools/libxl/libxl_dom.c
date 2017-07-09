@@ -1124,6 +1124,36 @@ int libxl__build_hvm(libxl__gc *gc, uint32_t domid,
         highmem_end = (1ull << 32) + (lowmem_end - mmio_start);
         lowmem_end = mmio_start;
     }
+#if defined(__i386__) || defined(__x86_64__)
+    if (info->u.hvm.sgx.epckb) {
+        /*
+         * FIXME:
+         *
+         * Currently EPC base is put at highmem_end + 8G, which should be
+         * safe in most cases.
+         *
+         * I am not quite sure which is the best way to calcualte EPC base.
+         * IMO we can either:
+         * 1) put EPC between lowmem_end to mmio_start, but this brings
+         * additional logic to handle, ex, lowmem_end may become too small
+         * if EPC is large (shall we limit domain's EPC size?), and hvmloader
+         * will try to enlarge MMIO space until lowmem_end, or even relocate
+         * lowmem -- all those make things complicated, so probably put EPC
+         * in hole between lowmem_end to mmio_start is not good.
+         * 2) put EPC after highmem_end, but hvmloader may also relocate MMIO
+         * resource to the place after highmem_end. Maybe the ideal way is to
+         * put EPC right after highmem_end, and change hvmloader to detect
+         * EPC, and put high MMIO resource after EPC. I've done this but I
+         * found a strange bug that EPT mapping of EPC will be (at least part
+         * of the mappings) will be removed by whom I still cannot find.
+         * Currently EPC base is put at highmem_end + 8G, and hvmloader code
+         * is not changed to handle EPC, but this should be safe for most cases.
+         */
+        info->u.hvm.sgx.epcbase = highmem_end + (2ULL << 32);
+    }
+    dom->epc_size = (info->u.hvm.sgx.epckb << 10);
+    dom->epc_base = info->u.hvm.sgx.epcbase;
+#endif
     dom->lowmem_end = lowmem_end;
     dom->highmem_end = highmem_end;
     dom->mmio_start = mmio_start;

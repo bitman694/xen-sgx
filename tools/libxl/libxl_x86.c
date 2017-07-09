@@ -530,6 +530,9 @@ int libxl__arch_domain_construct_memmap(libxl__gc *gc,
         if (dom->acpi_modules[i].length)
             e820_entries++;
 
+    if ( dom->epc_base && dom->epc_size )
+        e820_entries++;
+
     if (e820_entries >= E820MAX) {
         LOGD(ERROR, domid, "Ooops! Too many entries in the memory map!");
         rc = ERROR_INVAL;
@@ -570,6 +573,15 @@ int libxl__arch_domain_construct_memmap(libxl__gc *gc,
         e820[nr].addr = ((uint64_t)1 << 32);
         e820[nr].size = highmem_size;
         e820[nr].type = E820_RAM;
+        nr++;
+    }
+
+    /* EPC */
+    if (dom->epc_base && dom->epc_size) {
+        e820[nr].addr = dom->epc_base;
+        e820[nr].size = dom->epc_size;
+        e820[nr].type = E820_RESERVED;
+        nr++;
     }
 
     if (xc_domain_set_memory_map(CTX->xch, domid, e820, e820_entries) != 0) {

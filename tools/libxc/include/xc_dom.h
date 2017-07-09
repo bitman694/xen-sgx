@@ -203,6 +203,10 @@ struct xc_dom_image {
     xen_paddr_t lowmem_end;
     xen_paddr_t highmem_end;
     xen_pfn_t vga_hole_size;
+#if defined(__i386__) || defined(__x86_64__)
+    xen_paddr_t epc_base;
+    xen_paddr_t epc_size;
+#endif
 
     /* If unset disables the setup of the IOREQ pages. */
     bool device_model;
