@@ -742,7 +742,16 @@ static PyObject *pyxc_dom_set_policy_cpuid(XcObject *self,
     if ( !PyArg_ParseTuple(args, "i", &domid) )
         return NULL;
 
-    if ( xc_cpuid_apply_policy(self->xc_handle, domid, NULL, 0) )
+    /*
+     * FIXME:
+     *
+     * Don't support passing SGX info to xc_cpuid_apply_policy here. To be
+     * honest I don't know the purpose of this python function, so I don't
+     * know whether we need to allow *caller* of this function to pass SGX
+     * info. As EPC base is calculated internally by toolstack so I think
+     * it is also impossible to pass EPC base from *user*.
+     */
+    if ( xc_cpuid_apply_policy(self->xc_handle, domid, NULL, NULL, 0) )
         return pyxc_error_to_exception(self->xc_handle);
 
     Py_INCREF(zero);

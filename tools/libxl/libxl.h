@@ -1949,7 +1949,8 @@ libxl_device_pci *libxl_device_pci_assignable_list(libxl_ctx *ctx, int *num);
 int libxl_cpuid_parse_config(libxl_cpuid_policy_list *cpuid, const char* str);
 int libxl_cpuid_parse_config_xend(libxl_cpuid_policy_list *cpuid,
                                   const char* str);
-void libxl_cpuid_apply_policy(libxl_ctx *ctx, uint32_t domid);
+int libxl_cpuid_apply_policy(libxl_ctx *ctx, uint32_t domid,
+                             libxl_domain_build_info *info);
 void libxl_cpuid_set(libxl_ctx *ctx, uint32_t domid,
                      libxl_cpuid_policy_list cpuid);
 

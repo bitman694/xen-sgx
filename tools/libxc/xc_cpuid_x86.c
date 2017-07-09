@@ -38,7 +38,7 @@ enum {
 #define clear_feature(idx, dst) ((dst) &= ~bitmaskof(idx))
 #define set_feature(idx, dst)   ((dst) |=  bitmaskof(idx))
 
-#define DEF_MAX_BASE 0x0000000du
+#define DEF_MAX_BASE 0x00000012u
 #define DEF_MAX_INTELEXT  0x80000008u
 #define DEF_MAX_AMDEXT    0x8000001cu
 
@@ -178,6 +178,8 @@ struct cpuid_domain_info
     /* HVM-only information. */
     bool pae;
     bool nestedhvm;
+
+    xc_cpuid_policy_build_info_t *b_info;
 };
 
 static void cpuid(const unsigned int *input, unsigned int *regs)
@@ -369,6 +371,12 @@ static void intel_xc_cpuid_policy(xc_interface *xch,
                                   const struct cpuid_domain_info *info,
                                   const unsigned int *input, unsigned int *regs)
 {
+    xc_cpuid_policy_build_info_t *b_info = info->b_info;
+    xc_cpuid_policy_build_info_sgx_t *sgx = NULL;
+
+    if ( b_info )
+        sgx = &b_info->sgx;
+
     switch ( input[0] )
     {
     case 0x00000004:
@@ -379,6 +387,30 @@ static void intel_xc_cpuid_policy(xc_interface *xch,
         regs[0] = (((regs[0] & 0x7c000000u) << 1) | 0x04000000u |
                    (regs[0] & 0x3ffu));
         regs[3] &= 0x3ffu;
+        break;
+
+    case 0x00000012:
+        if ( !sgx ) {
+            regs[0] = regs[1] = regs[2] = regs[3] = 0;
+            break;
+        }
+
+        if ( !sgx->epc_base || !sgx->epc_size ) {
+            regs[0] = regs[1] = regs[2] = regs[3] = 0;
+            break;
+        }
+
+        if ( input[1] == 2 ) {
+            /*
+             * FIX EPC base and size for SGX CPUID leaf 2. Xen hypervisor is
+             * depending on XEN_DOMCTL_set_cpuid to know domain's EPC base
+             * and size.
+             */
+            regs[0] = (uint32_t)(sgx->epc_base & 0xfffff000) | 0x1;
+            regs[1] = (uint32_t)(sgx->epc_base >> 32);
+            regs[2] = (uint32_t)(sgx->epc_size & 0xfffff000) | 0x1;
+            regs[3] = (uint32_t)(sgx->epc_size >> 32);
+        }
         break;
 
     case 0x80000000:
@@ -442,6 +474,10 @@ static void xc_cpuid_hvm_policy(xc_interface *xch,
         else
             regs[0] = 0;
         regs[1] = regs[2] = regs[3] = 0;
+        break;
+
+    case 0x00000012:
+        /* Intel SGX. Passthrough to Intel function */
         break;
 
     case 0x80000000:
@@ -649,12 +685,13 @@ void xc_cpuid_to_str(const unsigned int *regs, char **strs)
     }
 }
 
-static void sanitise_featureset(struct cpuid_domain_info *info)
+static int sanitise_featureset(struct cpuid_domain_info *info)
 {
     const uint32_t fs_size = xc_get_cpu_featureset_size();
     uint32_t disabled_features[fs_size];
     static const uint32_t deep_features[] = INIT_DEEP_FEATURES;
     unsigned int i, b;
+    xc_cpuid_policy_build_info_t *b_info = info->b_info;
 
     if ( info->hvm )
     {
@@ -707,9 +744,19 @@ static void sanitise_featureset(struct cpuid_domain_info *info)
             disabled_features[i] &= ~dfs[i];
         }
     }
+
+    /* Cannot support 'epc' parameter if SGX is unavailable */
+    if ( b_info && b_info->sgx.epc_base && b_info->sgx.epc_size )
+        if (!test_bit(X86_FEATURE_SGX, info->featureset)) {
+            printf("Xen hypervisor doesn't support SGX.\n");
+            return -EFAULT;
+        }
+
+    return 0;
 }
 
 int xc_cpuid_apply_policy(xc_interface *xch, domid_t domid,
+                          xc_cpuid_policy_build_info_t *b_info,
                           uint32_t *featureset,
                           unsigned int nr_features)
 {
@@ -722,6 +769,8 @@ int xc_cpuid_apply_policy(xc_interface *xch, domid_t domid,
     if ( rc )
         goto out;
 
+    info.b_info = b_info;
+
     cpuid(input, regs);
     base_max = (regs[0] <= DEF_MAX_BASE) ? regs[0] : DEF_MAX_BASE;
     input[0] = 0x80000000;
@@ -732,7 +781,9 @@ int xc_cpuid_apply_policy(xc_interface *xch, domid_t domid,
     else
         ext_max = (regs[0] <= DEF_MAX_INTELEXT) ? regs[0] : DEF_MAX_INTELEXT;
 
-    sanitise_featureset(&info);
+    rc = sanitise_featureset(&info);
+    if ( rc )
+        goto out;
 
     input[0] = 0;
     input[1] = XEN_CPUID_INPUT_UNUSED;
@@ -757,12 +808,21 @@ int xc_cpuid_apply_policy(xc_interface *xch, domid_t domid,
                 continue;
         }
 
+        /* Intel SGX */
+        if ( input[0] == 0x12 )
+        {
+            input[1]++;
+            /* Intel SGX has 3 leaves */
+            if ( input[1] < 3 )
+                continue;
+        }
+
         input[0]++;
         if ( !(input[0] & 0x80000000u) && (input[0] > base_max ) )
             input[0] = 0x80000000u;
 
         input[1] = XEN_CPUID_INPUT_UNUSED;
-        if ( (input[0] == 4) || (input[0] == 7) )
+        if ( (input[0] == 4) || (input[0] == 7) || input[0] == 0x12)
             input[1] = 0;
         else if ( input[0] == 0xd )
             input[1] = 1; /* Xen automatically calculates almost everything. */

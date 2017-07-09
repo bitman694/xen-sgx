@@ -332,9 +332,20 @@ int libxl_cpuid_parse_config_xend(libxl_cpuid_policy_list *cpuid,
     return 0;
 }
 
-void libxl_cpuid_apply_policy(libxl_ctx *ctx, uint32_t domid)
+int libxl_cpuid_apply_policy(libxl_ctx *ctx, uint32_t domid,
+                             libxl_domain_build_info *info)
 {
-    xc_cpuid_apply_policy(ctx->xch, domid, NULL, 0);
+    xc_cpuid_policy_build_info_t cpuid_binfo;
+
+    memset(&cpuid_binfo, 0, sizeof (xc_cpuid_policy_build_info_t));
+
+    /* Currently only Intel SGX needs info when applying CPUID policy */
+    if (info->type == LIBXL_DOMAIN_TYPE_HVM) {
+        cpuid_binfo.sgx.epc_base = info->u.hvm.sgx.epcbase;
+        cpuid_binfo.sgx.epc_size = (info->u.hvm.sgx.epckb << 10);
+    }
+
+    return xc_cpuid_apply_policy(ctx->xch, domid, &cpuid_binfo, NULL, 0);
 }
 
 void libxl_cpuid_set(libxl_ctx *ctx, uint32_t domid,

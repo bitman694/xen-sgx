@@ -535,7 +535,11 @@ int libxl__build_post(libxl__gc *gc, uint32_t domid,
         return ERROR_FAIL;
     }
 
-    libxl_cpuid_apply_policy(ctx, domid);
+    rc = libxl_cpuid_apply_policy(ctx, domid, info);
+    if (rc) {
+        LOG(ERROR, "Failed to apply CPUID policy (%d)", rc);
+        return ERROR_FAIL;
+    }
     if (info->cpuid != NULL)
         libxl_cpuid_set(ctx, domid, info->cpuid);
 

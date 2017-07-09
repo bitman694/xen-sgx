@@ -796,7 +796,16 @@ CAMLprim value stub_xc_domain_cpuid_apply_policy(value xch, value domid)
 #if defined(__i386__) || defined(__x86_64__)
 	int r;
 
-	r = xc_cpuid_apply_policy(_H(xch), _D(domid), NULL, 0);
+    /*
+     * FIXME:
+     *
+     * Don't support passing SGX info to xc_cpuid_apply_policy here. To be
+     * honest I don't know the purpose of this CAML function, so I don't
+     * know whether we need to allow *caller* of this function to pass SGX
+     * info. As EPC base is calculated internally by toolstack so I think
+     * it is also impossible to pass EPC base from *user*.
+     */
+	r = xc_cpuid_apply_policy(_H(xch), _D(domid), NULL, NULL, 0);
 	if (r < 0)
 		failwith_xc(_H(xch));
 #else
