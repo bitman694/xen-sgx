@@ -156,6 +156,9 @@ static int init_acpi_config(libxl__gc *gc,
     config->lapic_id = acpi_lapic_id;
     config->acpi_revision = 5;
 
+    config->epc_base = b_info->u.hvm.sgx.epcbase;
+    config->epc_size = (b_info->u.hvm.sgx.epckb << 10);
+
     rc = 0;
 out:
     return rc;

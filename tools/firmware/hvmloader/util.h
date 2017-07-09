@@ -112,6 +112,9 @@ int hpet_exists(unsigned long hpet_base);
 void cpuid(uint32_t idx, uint32_t *eax, uint32_t *ebx,
            uint32_t *ecx, uint32_t *edx);
 
+void cpuid_count(uint32_t idx, uint32_t count, uint32_t *eax,
+                 uint32_t *ebx, uint32_t *ecx, uint32_t *edx);
+
 /* Read the TSC register. */
 static inline uint64_t rdtsc(void)
 {

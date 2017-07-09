@@ -63,6 +63,7 @@ struct acpi_config {
     /* PCI I/O hole */
     uint32_t pci_start, pci_len;
     uint64_t pci_hi_start, pci_hi_len;
+    uint64_t epc_base, epc_size;
 
     uint32_t table_flags;
     uint8_t acpi_revision;

@@ -5,7 +5,7 @@
         * BIOS region must match struct acpi_info in build.c and
         * be located at ACPI_INFO_PHYSICAL_ADDRESS = 0xFC000000
         */
-       OperationRegion(BIOS, SystemMemory, 0xFC000000, 40)
+       OperationRegion(BIOS, SystemMemory, 0xFC000000, 56)
        Field(BIOS, ByteAcc, NoLock, Preserve) {
            UAR1, 1,
            UAR2, 1,
@@ -21,6 +21,8 @@
            LMIN, 32,
            HMIN, 32,
            LLEN, 32,
-           HLEN, 32
+           HLEN, 32,
+           EMIN, 64,
+           ELEN, 64,
        }
     }

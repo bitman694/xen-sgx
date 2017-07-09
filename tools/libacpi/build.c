@@ -54,6 +54,7 @@ struct acpi_info {
     uint32_t madt_lapic0_addr;  /* 16   - Address of first MADT LAPIC struct */
     uint32_t vm_gid_addr;       /* 20   - Address of VM generation id buffer */
     uint64_t pci_hi_min, pci_hi_len; /* 24, 32 - PCI I/O hole boundaries */
+    uint64_t epc_min, epc_len;  /* 40, 48 - EPC region */
 };
 
 static void set_checksum(
@@ -535,6 +536,8 @@ int acpi_build_tables(struct acpi_ctxt *ctxt, struct acpi_config *config)
         acpi_info->pci_hi_min = config->pci_hi_start;
         acpi_info->pci_hi_len = config->pci_hi_len;
     }
+    acpi_info->epc_min = config->epc_base;
+    acpi_info->epc_len = config->epc_size;
 
     /*
      * Fill in high-memory data structures, starting at @buf.
